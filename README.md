@@ -1,6 +1,6 @@
 # qq-dump
 
-Android 端 QQ NT 数据库密钥提取与解密工具
+极速的 Android 端 NTQQ 数据库密钥提取与解密工具。遵循 KISS 原则与 Unix 哲学，针对移动端闪存优化 I/O 策略 ，最小化读写磨损。
 
 ## 依赖
 
