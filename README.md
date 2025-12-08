@@ -18,15 +18,12 @@ pkg install -y sqlcipher
 你需要一款终端软件，例如 [termux/termux-app](https://github.com/termux/termux-app/releases)
 
 ```bash
-git clone https://github.com/miniyu157/qq-dump.git ~/.local/bin/qq-dump
+git clone https://github.com/miniyu157/qq-dump.git ~/.local/bin/qq-dump-bin
 ```
 
 ```bash
-ln -s ~/.local/bin/qq-dump/dumpkey ~/.local/bin/qq-dumpkey
-ln -s ~/.local/bin/qq-dump/dumpdb ~/.local/bin/qq-dumpdb
+ln -s ~/.local/bin/qq-dump-bin/qq-dump ~/.local/bin/qq-dump
 ```
-
-如果通过软链接启动, 则下文的用法中将 `./dumpkey` 替换为 `qq-dumpkey`, `./dumpdb` 替换为 `qq-dumpdb`, 
 
 > [!NOTE]
 > 确保 `~/.local/bin` 位于 PATH 环境变量中
@@ -36,13 +33,19 @@ ln -s ~/.local/bin/qq-dump/dumpdb ~/.local/bin/qq-dumpdb
 查看人类可读的账号信息与密钥:
 
 ```bash
-./dumpkey
+qq-dump k
+
+# 等同于
+# qq-dump key
 ```
 
 获取机器可读的原始数据:
 
 ```bash
-./dumpkey core
+qq-dump k core
+
+# 等同于
+# qq-dump key core
 ```
 
 批量解密并导出数据库:
@@ -50,7 +53,10 @@ ln -s ~/.local/bin/qq-dump/dumpdb ~/.local/bin/qq-dumpdb
 默认导出在脚本所在文件夹的 `db_output/`, 可以使用参数指定一个新的路径, 确保那个路径存在
 
 ```bash
-./dumpdb [db_output/]
+qq-dump db [db_output/]
+
+# 等同于
+qq-dump database [db_output/]
 ```
 
 > [!NOTE]

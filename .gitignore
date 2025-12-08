@@ -1,2 +1,4 @@
 *.bak
 db_output/
+*.lock
+*.pid

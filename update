@@ -1,0 +1,31 @@
+#!/system/bin/sh
+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Yumeka <miniyu157@163.com>
+
+# shellcheck shell=ksh
+
+RunLock=".update.pid"
+
+# 检查锁文件是否存在，且对应的进程是否存活
+if [[ -f $RunLock ]] && kill -0 "$(cat "$RunLock")" 2> /dev/null; then
+    exit 0
+fi
+
+# 写入当前 PID 并设置退出时自动清理
+echo $$ > "$RunLock"
+trap 'rm -f "$RunLock"' EXIT HUP INT QUIT TERM
+
+git fetch -q || exit 0
+
+LocalHead=$(git rev-parse HEAD)
+RemoteHead=$(git rev-parse origin/main)
+
+# 仅当远程指针与本地不一致时才重置，避免误删本地修改
+if [[ $LocalHead != "$RemoteHead" ]]; then
+    git log --color=always \
+        --format='%C(243)[%h]%C(reset) %s' \
+        "$LocalHead..origin/main" > update.lock
+
+    git reset --hard origin/main > /dev/null 2>&1
+fi

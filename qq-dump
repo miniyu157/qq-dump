@@ -1,0 +1,65 @@
+#!/system/bin/sh
+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Yumeka <miniyu157@163.com>
+
+# shellcheck shell=ksh
+
+SelfRoot="$(dirname "$(readlink -f "$0")")"
+GitBranch="$(git -C "$SelfRoot" rev-parse --abbrev-ref HEAD)"
+SELF_VERSION="r$(git -C "$SelfRoot" rev-list --count HEAD)-$(git -C "$SelfRoot" rev-parse --short HEAD)"
+Self="${0##*/}"
+
+[[ -f "$SelfRoot/.dev" ]] || {
+    [[ -f "$SelfRoot/update.lock" ]] && {
+        echo "$Self 上次启动时进行了更新, 更新内容是:"
+        cat "$SelfRoot/update.lock"
+        rm -f "$SelfRoot/update.lock"
+        echo ""
+    }
+    (cd "$SelfRoot" && /system/bin/sh update > /dev/null 2>&1 &)
+}
+
+C_GRAY=$'\e[38;5;243m'
+C_YELLOW=$'\e[33m'
+C_RESET=$'\e[0m'
+C_BLOD=$'\e[1m'
+
+usage() {
+    cat << EOF
+$Self $C_YELLOW($GitBranch)$C_RESET $C_GRAY$SELF_VERSION$C_RESET
+
+$C_BLOD用法: $Self <指令> [参数...]$C_RESET
+$C_BLOD指令:$C_RESET key,k database,db
+EOF
+
+    exit "${1:-0}"
+}
+
+[[ -z $1 ]] && {
+    usage 0
+}
+
+Command="$1"
+shift
+
+case "$Command" in
+    k | key)
+        [[ -x "$SelfRoot/dumpkey" ]] || {
+            printf "错误: 找不到 dumpkey"
+            exit 1
+        }
+        exec "$SelfRoot/dumpkey" "$@"
+        ;;
+    db | database)
+        [[ -x "$SelfRoot/dumpdb" ]] || {
+            printf "错误: 找不到 dumpdb"
+            exit 1
+        }
+        exec "$SelfRoot/dumpdb" "$@"
+        ;;
+    *)
+        printf "未知指令: %s" "$Command"
+        usage 1
+        ;;
+esac
