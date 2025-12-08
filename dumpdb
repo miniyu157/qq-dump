@@ -1,0 +1,65 @@
+#!/system/bin/sh
+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Yumeka <miniyu157@163.com>
+
+# shellcheck shell=ksh
+
+(($(id -u) != 0)) && exec su -c "$(printf "%q " "$(readlink -f "$0")" "$@")"
+ScriptDir=$(dirname "$0")
+export LD_LIBRARY_PATH="/data/data/com.termux/files/usr/lib"
+export PATH="/data/data/com.termux/files/usr/bin:$PATH"
+
+C_BLUE=$'\e[34m'
+C_RESET=$'\e[0m'
+
+command -v sqlcipher > /dev/null 2>&1 || {
+    printf "找不到 sqlcipher, 在 Termux 中使用 'pkg install -y sqlcipher' 以安装。"
+    exit 1
+}
+
+OutDir="$ScriptDir/db_output"
+[[ -d $1 ]] && OutDir="$1"
+TIMESPAN="$(date +%Y-%m-%d_%H-%M-%S)"
+mkdir -p "$OutDir"
+
+"$ScriptDir"/dumpkey core | while read -r QQPATH PATH_HASH QQ UID KEY; do
+    _raw_user="${QQPATH#/data/user/}"
+    user="${_raw_user%%/*}"
+    target_dir="$OutDir/$TIMESPAN/${user}_${QQ}"
+
+    mkdir -p "$target_dir"
+    _prefix="${ScriptDir}/"
+    printf "${C_BLUE}[%s] %s ==> %s${C_RESET}\n" "$user" "$QQ" "${target_dir##$_prefix}"
+
+    for db_path in "$QQPATH/databases/nt_db/nt_qq_$PATH_HASH"/*.db; do
+        [[ -e $db_path ]] || continue
+        [[ $db_path == *"$UID.db" ]] && continue
+
+        _db_name="${db_path##*/}"
+        [[ -s "$ScriptDir/db_list.txt" ]] && {
+            grep -qxF "$_db_name" "$ScriptDir/db_list.txt" || continue
+        }
+
+        printf "  -> %s\n" "$_db_name"
+        final_db="$target_dir/${_db_name%.*}.db"
+        tmp_clean="$target_dir/.tmp_${_db_name}"
+
+        dd if="$db_path" of="$tmp_clean" bs=1024 skip=1 2> /dev/null
+
+        rm -f "$final_db"
+        {
+            cat << EOF
+PRAGMA key = '$KEY';
+PRAGMA kdf_iter = 4000;
+PRAGMA cipher_hmac_algorithm = HMAC_SHA1;
+PRAGMA cipher_page_size = 4096;
+ATTACH DATABASE '$final_db' AS plaintext KEY '';
+SELECT sqlcipher_export('plaintext');
+DETACH DATABASE plaintext;
+EOF
+        } | sqlcipher "$tmp_clean" > /dev/null 2>&1
+
+        rm -f "$tmp_clean"
+    done
+done

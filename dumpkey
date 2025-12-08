@@ -1,0 +1,49 @@
+#!/system/bin/sh
+
+# A minimalist, dependency-free QQ NT database key extractor for Android
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Yumeka <miniyu157@163.com>
+
+# shellcheck shell=ksh
+
+(($(id -u) != 0)) && exec su -c "$(printf "%q " "$(readlink -f "$0")" "$@")"
+
+C_RED=$'\e[31m'
+C_RESET=$'\e[0m'
+
+for UidFile in /data/user/*/com.tencent.mobileqq/files/uid/*; do
+    [[ -e $UidFile ]] || continue
+
+    QQPath="${UidFile%/files/uid/*}"
+
+    _raw_name="${UidFile##*/}"
+    qq="${_raw_name%%###*}"
+    uid="${_raw_name##*###}"
+
+    _raw_uid_hash=$(echo -n "$uid" | md5sum)
+    uid_hash="${_raw_uid_hash%% *}"
+    _raw_path_hash=$(echo -n "${uid_hash}nt_kernel" | md5sum)
+    path_hash="${_raw_path_hash%% *}"
+    rand=$(strings "$QQPath"/databases/nt_db/nt_qq_"$path_hash"/profile_info.db | grep -A 1 'QQ_NT DB' | tail -n 1 | grep -oE '[a-zA-Z0-9]{8}')
+
+    raw_key=$(echo -n "$uid_hash$rand" | md5sum)
+    key="${raw_key%% *}"
+
+    case "$1" in
+        core)
+            printf "%s %s %s %s %s" "$QQPath" "$path_hash" "$qq" "$uid" "$key"
+            ;;
+        *)
+            cat << EOF
+${C_RED}QQPath:${C_RESET}     $QQPath
+${C_RED}qq:${C_RESET}         $qq
+${C_RED}uid:${C_RESET}        $uid
+${C_RED}uid_hash:${C_RESET}   $uid_hash
+${C_RED}path_hash:${C_RESET}  $path_hash
+${C_RED}rand:${C_RESET}       $rand
+${C_RED}key:${C_RESET}        $key
+EOF
+            ;;
+    esac
+    printf "\n"
+done
