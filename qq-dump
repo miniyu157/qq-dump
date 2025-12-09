@@ -21,6 +21,7 @@ Self="${0##*/}"
 }
 
 C_GRAY=$'\e[38;5;243m'
+C_BLUE=$'\e[32m'
 C_YELLOW=$'\e[33m'
 C_RESET=$'\e[0m'
 C_BLOD=$'\e[1m'
@@ -31,6 +32,9 @@ $Self $C_YELLOW($GitBranch)$C_RESET $C_GRAY$SELF_VERSION$C_RESET
 
 $C_BLOD用法: $Self <指令> [参数...]$C_RESET
 $C_BLOD指令:$C_RESET key,k database,db
+
+远程仓库: ${C_BLUE}https://github.com/miniyu157/qq-dump${C_RESET}
+更多信息和说明请查看 README.md 文件
 EOF
 
     exit "${1:-0}"
