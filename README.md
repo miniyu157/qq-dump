@@ -44,22 +44,20 @@ ln -s ~/.local/bin/qq-dump-bin/qq-dump ~/.local/bin/qq-dump
 
 ## 用法
 
+```
+qq-dump key [--raw]
+```
+
 **`qq-dump key` 命令用于获取账号信息与密钥,
-加上 `core` 参数即可获取机器可读的原始数据, 通常用于管道操作**
-
-示例:
-
-```bash
-qq-dump key
-```
-
-```bash
-qq-dump key core
-```
+加上 `--raw` 选项即可得到机器可读的原始数据, 通常用于管道操作**
 
 ---
 
 **`qq-dump db` 命令用于解密数据库, 依赖 `./dumpkey` 获取密钥**
+
+```
+qq-dump db [--use-disk] [path=db_output/]
+```
 
 默认会将文件输出到脚本所在文件夹的 `db_output/`,
 可以使用参数指定一个新的路径, 需要确保那个路径存在
@@ -67,15 +65,8 @@ qq-dump key core
 如果脚本所在文件夹的 `./db_list.txt` 存在且非空, 则仅解密列表中指定的数据库,
 默认有 nt_msg.db 和 profile_info.db, 每行一个文件名
 
-示例:
-
-```bash
-qq-dump db
-```
-
-```bash
-qq-dump db /sdcard/_qqdb
-```
+临时文件使用 /tmp (tmpfs) 以获得更快的读写速度,
+使用 `--use-disk` 选项即可使用磁盘进行读写临时文件
 
 ---
 
