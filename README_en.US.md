@@ -44,12 +44,13 @@ ln -s ~/.local/bin/qq-dump-bin/qq-dump ~/.local/bin/qq-dump
 
 ## Usage
 
+**The `qq-dump key` command is used to retrieve account information and keys.**
+
 ```
 qq-dump key [--raw]
 ```
 
-**The `qq-dump key` command is used to retrieve account information and keys.
-Adding the `--raw` option yields machine-readable raw data, typically for piping operations.**
+Adding the `--raw` option yields machine-readable raw data, typically for piping operations.
 
 ---
 
@@ -62,11 +63,11 @@ qq-dump db [--use-disk] [path=db_output/]
 By default, files are output to `db_output/` in the script's directory.
 You can specify a new path as an argument; ensure that the path exists.
 
-If `./db_list.txt` in the script's directory exists and is not empty, only the databases specified in the list will be decrypted.
-Default files are `nt_msg.db` and `profile_info.db`, listed one filename per line.
-
 Temporary files use /tmp (tmpfs) for faster read/write speeds.
 Use the `--use-disk` option to use the disk for reading and writing temporary files.
+
+If `./db_list.txt` in the script's directory exists and is not empty, only the databases specified in the list will be decrypted.
+Default files are `nt_msg.db` and `profile_info.db`, listed one filename per line.
 
 ---
 
