@@ -84,6 +84,12 @@ qq-dump db /sdcard/_qqdb
 * db = database
 * key = k
 
+## 关于从数据库中提取人类可读的文本
+
+我的另一个仓库 [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt) 虽然已经归档, 它是 100% 由 LLM 编写的, 其中的 `export_chats.py` 完成度非常高, 并且难以维护
+
+我不知道应该怎样将它与 qq-dump 配合, 如果你有想法, 请告诉我或者提交 issues。谢谢!
+
 ## 致谢
 
 解密算法思路源自 [QQBackup/QQDecrypt](https://github.com/QQBackup/QQDecrypt/)。
