@@ -30,7 +30,7 @@ for UidFile in /data/user/*/com.tencent.mobileqq/files/uid/*; do
     key="${raw_key%% *}"
 
     case "$1" in
-        core)
+        --raw)
             printf "%s %s %s %s %s" "$QQPath" "$path_hash" "$qq" "$uid" "$key"
             ;;
         *)

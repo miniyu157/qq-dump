@@ -31,7 +31,7 @@ OutDir="$ScriptDir/db_output"
 TIMESPAN="$(date +%Y-%m-%d_%H-%M-%S)"
 mkdir -p "$OutDir"
 
-"$ScriptDir"/dumpkey core | while read -r QQPATH PATH_HASH QQ UID KEY; do
+"$ScriptDir"/dumpkey --raw | while read -r QQPATH PATH_HASH QQ UID KEY; do
     _raw_user="${QQPATH#/data/user/}"
     user="${_raw_user%%/*}"
     target_dir="$OutDir/$TIMESPAN/${user}_${QQ}"
