@@ -22,7 +22,7 @@ qq-dump utilizes Termux binaries. Enter Termux and use the following command to 
 pkg install -y sqlcipher git coreutils
 ```
 
-### Installation
+## Installation
 
 You need a terminal emulator, such as [termux/termux-app](https://github.com/termux/termux-app/releases).
 

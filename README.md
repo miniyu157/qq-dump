@@ -22,7 +22,7 @@ qq-dump 会使用 termux 的二进制文件, 进入 Termux 使用以下命令补
 pkg install -y sqlcipher git coreutils
 ```
 
-### 安装
+## 安装
 
 你需要一款终端模拟器, 例如 [termux/termux-app](https://github.com/termux/termux-app/releases)
 
