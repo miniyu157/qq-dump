@@ -63,7 +63,7 @@ case "$Command" in
         exec "$SelfRoot/dumpdb" "$@"
         ;;
     *)
-        printf "未知指令: %s" "$Command"
-        usage 1
+        printf "未知指令: %s, 输入 %s 以查看可用指令\n" "$Command" "$Self"
+        exit 1
         ;;
 esac
