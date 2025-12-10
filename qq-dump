@@ -10,6 +10,17 @@ GitBranch="$(git -C "$SelfRoot" rev-parse --abbrev-ref HEAD)"
 SELF_VERSION="r$(git -C "$SelfRoot" rev-list --count HEAD)-$(git -C "$SelfRoot" rev-parse --short HEAD)"
 Self="${0##*/}"
 
+# colorize
+if [[ -t 1 ]] || [[ -n $FORCE_COLOR ]]; then
+    COFF=$'\e[0m'
+    BOLD=$'\e[1m'
+
+    GREEN=$'\e[32m'
+    YELLOW=$'\e[33m'
+    GRAY=$'\e[38;5;243m'
+fi
+readonly COFF BOLD GREEN YELLOW GRAY
+
 [[ -f "$SelfRoot/.dev" ]] || {
     [[ -f "$SelfRoot/update.lock" ]] && {
         echo "$Self 上次启动时进行了更新, 更新内容是:"
@@ -20,20 +31,14 @@ Self="${0##*/}"
     (cd "$SelfRoot" && /system/bin/sh update > /dev/null 2>&1 &)
 }
 
-C_GRAY=$'\e[38;5;243m'
-C_BLUE=$'\e[32m'
-C_YELLOW=$'\e[33m'
-C_RESET=$'\e[0m'
-C_BLOD=$'\e[1m'
-
 usage() {
     cat << EOF
-$Self $C_YELLOW($GitBranch)$C_RESET $C_GRAY$SELF_VERSION$C_RESET
+$Self ${YELLOW}($GitBranch)${COFF} ${GRAY}$SELF_VERSION${COFF}
 
-$C_BLOD用法: $Self <指令> [参数...]$C_RESET
-$C_BLOD指令:$C_RESET key,k database,db
+${BOLD}用法: $Self <指令> [参数...]${COFF}
+${BOLD}指令:${COFF} key,k database,db
 
-远程仓库: ${C_BLUE}https://github.com/miniyu157/qq-dump${C_RESET}
+远程仓库: ${GREEN}https://github.com/miniyu157/qq-dump${COFF}
 更多信息和说明请查看 README.md 文件
 EOF
 
@@ -47,23 +52,30 @@ EOF
 Command="$1"
 shift
 
+start_time=$(date +%s%3N)
+
 case "$Command" in
     k | key)
         [[ -x "$SelfRoot/dumpkey" ]] || {
             printf "错误: 找不到 dumpkey"
             exit 1
         }
-        exec "$SelfRoot/dumpkey" "$@"
+        "$SelfRoot/dumpkey" "$@"
         ;;
     db | database)
         [[ -x "$SelfRoot/dumpdb" ]] || {
             printf "错误: 找不到 dumpdb"
             exit 1
         }
-        exec "$SelfRoot/dumpdb" "$@"
+        "$SelfRoot/dumpdb" "$@"
         ;;
     *)
         printf "未知指令: %s, 输入 %s 以查看可用指令\n" "$Command" "$Self"
         exit 1
         ;;
 esac
+
+duration=$(($(date +%s%3N) - start_time))
+
+printf "\n"
+printf "${BOLD}${GREEN}Total runtime:${COFF} %sms\n" "$duration"

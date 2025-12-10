@@ -14,9 +14,6 @@ export PATH="/data/data/com.termux/files/usr/bin:$PATH"
 if [[ -t 1 ]] || [[ -n $FORCE_COLOR ]]; then
     COFF=$'\e[0m'
     BLUE=$'\e[34m'
-else
-    COFF=''
-    BLUE=''
 fi
 readonly COFF BLUE
 

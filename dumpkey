@@ -12,14 +12,14 @@
 if [[ -t 1 ]] || [[ -n $FORCE_COLOR ]]; then
     COFF=$'\e[0m'
     RED=$'\e[31m'
-else
-    COFF=''
-    RED=''
 fi
 readonly COFF RED
 
-for UidFile in /data/user/*/com.tencent.mobileqq/files/uid/*; do
-    [[ -e $UidFile ]] || continue
+files=(/data/user/*/com.tencent.mobileqq/files/uid/*)
+last=$((${#files[@]} - 1))
+
+for i in "${!files[@]}"; do
+    UidFile=${files[$i]}
 
     QQPath="${UidFile%/files/uid/*}"
 
@@ -50,7 +50,11 @@ ${RED}path_hash:${COFF}  $path_hash
 ${RED}rand:${COFF}       $rand
 ${RED}key:${COFF}        $key
 EOF
+
             ;;
     esac
-    printf "\n"
+
+    [[ $i != "$last" || $1 == "--raw" ]] && {
+        printf "\n"
+    }
 done
