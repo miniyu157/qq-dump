@@ -8,8 +8,15 @@
 
 (($(id -u) != 0)) && exec su -c "$(printf "%q " "$(readlink -f "$0")" "$@")"
 
-C_RED=$'\e[31m'
-C_RESET=$'\e[0m'
+# colorize
+if [[ -t 1 ]] || [[ -n $FORCE_COLOR ]]; then
+    COFF=$'\e[0m'
+    RED=$'\e[31m'
+else
+    COFF=''
+    RED=''
+fi
+readonly COFF RED
 
 for UidFile in /data/user/*/com.tencent.mobileqq/files/uid/*; do
     [[ -e $UidFile ]] || continue
@@ -35,13 +42,13 @@ for UidFile in /data/user/*/com.tencent.mobileqq/files/uid/*; do
             ;;
         *)
             cat << EOF
-${C_RED}QQPath:${C_RESET}     $QQPath
-${C_RED}qq:${C_RESET}         $qq
-${C_RED}uid:${C_RESET}        $uid
-${C_RED}uid_hash:${C_RESET}   $uid_hash
-${C_RED}path_hash:${C_RESET}  $path_hash
-${C_RED}rand:${C_RESET}       $rand
-${C_RED}key:${C_RESET}        $key
+${RED}QQPath:${COFF}     $QQPath
+${RED}qq:${COFF}         $qq
+${RED}uid:${COFF}        $uid
+${RED}uid_hash:${COFF}   $uid_hash
+${RED}path_hash:${COFF}  $path_hash
+${RED}rand:${COFF}       $rand
+${RED}key:${COFF}        $key
 EOF
             ;;
     esac

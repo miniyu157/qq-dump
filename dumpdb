@@ -10,8 +10,15 @@ ScriptDir=$(dirname "$0")
 export LD_LIBRARY_PATH="/data/data/com.termux/files/usr/lib"
 export PATH="/data/data/com.termux/files/usr/bin:$PATH"
 
-C_BLUE=$'\e[34m'
-C_RESET=$'\e[0m'
+# colorize
+if [[ -t 1 ]] || [[ -n $FORCE_COLOR ]]; then
+    COFF=$'\e[0m'
+    BLUE=$'\e[34m'
+else
+    COFF=''
+    BLUE=''
+fi
+readonly COFF BLUE
 
 command -v sqlcipher > /dev/null 2>&1 || {
     printf "找不到 sqlcipher, 在 Termux 中使用 'pkg install -y sqlcipher' 以安装。"
@@ -38,7 +45,7 @@ mkdir -p "$OutDir"
 
     mkdir -p "$target_dir"
     _prefix="${ScriptDir}/"
-    printf "${C_BLUE}[%s] %s ==> %s${C_RESET}\n" "$user" "$QQ" "${target_dir##$_prefix}"
+    printf "${BLUE}[%s] %s ==> %s${COFF}\n" "$user" "$QQ" "${target_dir##"$_prefix"}"
 
     for db_path in "$QQPATH/databases/nt_db/nt_qq_$PATH_HASH"/*.db; do
         [[ -e $db_path ]] || continue
