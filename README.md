@@ -13,8 +13,8 @@
 
 ## 依赖
 
-  * Root 权限
-  * sqlcipher 二进制文件
+- Root 权限
+- sqlcipher 二进制文件
 
 qq-dump 会使用 termux 的二进制文件, 进入 Termux 使用以下命令补全依赖
 
@@ -44,7 +44,7 @@ ln -s ~/.local/bin/qq-dump-bin/qq-dump ~/.local/bin/qq-dump
 
 ## 用法
 
-**`qq-dump key` 命令用于获取账号信息与密钥, 
+**`qq-dump key` 命令用于获取账号信息与密钥,
 加上 `core` 参数即可获取机器可读的原始数据, 通常用于管道操作**
 
 示例:
@@ -61,10 +61,10 @@ qq-dump key core
 
 **`qq-dump db` 命令用于解密数据库, 依赖 `./dumpkey` 获取密钥**
 
-默认会将文件输出到脚本所在文件夹的 `db_output/`, 
+默认会将文件输出到脚本所在文件夹的 `db_output/`,
 可以使用参数指定一个新的路径, 需要确保那个路径存在
 
-如果脚本所在文件夹的 `./db_list.txt` 存在且非空, 则仅解密列表中指定的数据库, 
+如果脚本所在文件夹的 `./db_list.txt` 存在且非空, 则仅解密列表中指定的数据库,
 默认有 nt_msg.db 和 profile_info.db, 每行一个文件名
 
 示例:
@@ -81,8 +81,8 @@ qq-dump db /sdcard/_qqdb
 
 **别名**
 
-* db = database
-* key = k
+- db = database
+- key = k
 
 ## 关于从数据库中提取人类可读的文本
 

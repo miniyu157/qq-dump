@@ -13,8 +13,8 @@ An ultra-fast NTQQ database key extraction and decryption tool for Android. Adhe
 
 ## Dependencies
 
-  * Root Access
-  * sqlcipher binary
+- Root Access
+- sqlcipher binary
 
 qq-dump utilizes Termux binaries. Enter Termux and use the following command to install dependencies:
 
@@ -81,8 +81,14 @@ qq-dump db /sdcard/_qqdb
 
 **Aliases**
 
-* db = database
-* key = k
+- db = database
+- key = k
+
+## About Extracting Human-Readable Text from Databases
+
+Although my other repository [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt) is now archived, it was written 100% by LLMs. The included `export_chats.py` is highly functional but difficult to maintain.
+
+I am unsure how to best integrate it with `qq-dump`. If you have any ideas, please let me know or submit an issue. Thank you!
 
 ## Credits
 
