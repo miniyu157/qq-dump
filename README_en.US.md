@@ -2,7 +2,7 @@
 
 # QQ DUMP
 
-An ultra-fast NTQQ database key extraction and decryption tool for Android. Adhering to the KISS principle and Unix philosophy, it features I/O strategies optimized for mobile flash storage to minimize read/write wear.
+An ultra-fast NTQQ database key extraction, decryption, and chat history export tool for Android. Adhering to the KISS principle and Unix philosophy, it features I/O strategies optimized for mobile flash storage to minimize read/write wear.
 
 [English](./README_en.US.md) | [简体中文](./README.md)
 
