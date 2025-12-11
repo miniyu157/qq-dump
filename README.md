@@ -61,7 +61,9 @@ qq-dump db [--raw] [--use-disk] [path=db_output/]
 ```
 
 `--raw`: 简化输出, 通常用于管道操作
+
 `--use-disk`: 改为使用磁盘读写临时文件, 默认使用 /tmp (tmpfs) 
+
 `PATH`: 指定一个新的输出路径, 需要确保那个文件夹存在。默认为 `db_output/`
 
 > [!TIP]
@@ -79,7 +81,9 @@ qq-dump db [--raw] [--use-disk] [path=db_output/]
 qq-dump chat <OUTDIR>
 ```
 
-`chat_export/main.py` 原本是 [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt) 项目中的 `export_chats.py`, 完成度非常高
+该命令内部调用了 `./dumpdb --raw /tmp`, 中间文件 100% 存在于内存中, 速度极快
+
+`chat_export/main.py` 原本是 [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt) 项目中的 `export_chats.py`, 完成度非常高, 
 QQ DUMP 内置的版本为兼容版本
 
 `chat_export/LICENSE` 中的署名 "KlxPiao", 就是我的另一个笔名

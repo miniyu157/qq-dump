@@ -61,7 +61,9 @@ qq-dump db [--raw] [--use-disk] [path=db_output/]
 ```
 
 `--raw`: Simplify output, typically for piping operations.
+
 `--use-disk`: Use disk for reading/writing temporary files, defaults to /tmp (tmpfs).
+
 `PATH`: Specify a new output path; ensure that the directory exists. Defaults to `db_output/`.
 
 > [!TIP]
@@ -79,8 +81,9 @@ qq-dump db [--raw] [--use-disk] [path=db_output/]
 qq-dump chat <OUTDIR>
 ```
 
-`chat_export/main.py` is originally `export_chats.py` from the [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt) project, which has a very high completion rate.
-The version built into QQ DUMP is a compatible version.
+This command internally invokes ./dumpdb --raw /tmp. Intermediate files reside entirely in memory, ensuring ultra-fast performance.
+
+`chat_export/main.py` is originally `export_chats.py` from the [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt) project, which has a very high completion rate. The version built into QQ DUMP is a compatible version.
 
 The signature "KlxPiao" in `chat_export/LICENSE` is my other pen name.
 
