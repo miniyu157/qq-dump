@@ -18,13 +18,14 @@ fi
 readonly COFF BLUE
 
 command -v sqlcipher > /dev/null 2>&1 || {
-    printf "找不到 sqlcipher, 在 Termux 中使用 'pkg install -y sqlcipher' 以安装。"
+    printf "找不到 sqlcipher, 在 Termux 中使用 'pkg install -y sqlcipher' 以安装。" >&2
     exit 1
 }
 
 USE_DISK=0
 RAW=0
 OUT_DIR="$ScriptDir/db_output"
+
 while (($# > 0)); do
     case "$1" in
         --use-disk)
@@ -36,18 +37,22 @@ while (($# > 0)); do
             shift
             ;;
         *)
-            [[ -d $1 ]] && {
+            if [[ -d $1 ]]; then
                 OUT_DIR="$1"
-            }
+            else
+                printf "不是文件夹: %s" "$1" >&2
+                exit 1
+            fi
             shift
             ;;
     esac
 done
 
-[[ ! -w "/tmp" ]] && USE_DISK=1 │
+[[ ! -w "/tmp" ]] && USE_DISK=1
+
+mkdir -p "$OUT_DIR"
 
 TIMESPAN="$(date +%Y-%m-%d_%H-%M-%S)"
-mkdir -p "$OUT_DIR"
 
 "$ScriptDir"/dumpkey --raw | while read -r QQPATH PATH_HASH QQ UID KEY; do
     _raw_user="${QQPATH#/data/user/}"
