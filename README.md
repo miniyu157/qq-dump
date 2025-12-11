@@ -84,7 +84,7 @@ qq-dump chat <OUTDIR>
 该命令内部调用了 `./dumpdb --raw /tmp`, 中间文件 100% 存在于内存中, 速度极快
 
 `chat_export/main.py` 原本是 [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt) 项目中的 `export_chats.py`, 完成度非常高, 
-QQ DUMP 内置的版本为兼容版本
+QQ DUMP 内置的版本为兼容版本, 我只最小化修改了部分参数解析, 还未做更多的优化和适配
 
 `chat_export/LICENSE` 中的署名 "KlxPiao", 就是我的另一个笔名
 
