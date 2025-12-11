@@ -36,7 +36,7 @@ usage() {
 $Self ${YELLOW}($GitBranch)${COFF} ${GRAY}$SELF_VERSION${COFF}
 
 ${BOLD}用法: $Self <指令> [参数...]${COFF}
-${BOLD}指令:${COFF} key,k database,db
+${BOLD}指令:${COFF} key,k database,db chat
 
 远程仓库: ${GREEN}https://github.com/miniyu157/qq-dump${COFF}
 更多信息和说明请查看 README.md 文件
@@ -57,20 +57,28 @@ start_time=$(date +%s%3N)
 case "$Command" in
     k | key)
         [[ -x "$SelfRoot/dumpkey" ]] || {
-            printf "错误: 找不到 dumpkey"
+            printf "错误: 找不到 dumpkey" >&2
             exit 1
         }
         "$SelfRoot/dumpkey" "$@"
         ;;
     db | database)
         [[ -x "$SelfRoot/dumpdb" ]] || {
-            printf "错误: 找不到 dumpdb"
+            printf "错误: 找不到 dumpdb" >&2
             exit 1
         }
         "$SelfRoot/dumpdb" "$@"
         ;;
+    chat)
+        [[ -x "$SelfRoot/dumpchat" ]] || {
+            printf "错误: 找不到 dumpchat" >&2
+            exit 1
+        }
+        "$SelfRoot/dumpchat" "$@"
+        exit $?
+        ;;
     *)
-        printf "未知指令: %s, 输入 %s 以查看可用指令\n" "$Command" "$Self"
+        printf "未知指令: %s, 输入 %s 以查看可用指令\n" "$Command" "$Self" >&2
         exit 1
         ;;
 esac

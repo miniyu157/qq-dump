@@ -1,0 +1,58 @@
+#!/system/bin/sh
+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Yumeka <miniyu157@163.com>
+
+# shellcheck shell=ksh
+
+(($(id -u) != 0)) && exec su -c "$(printf "%q " "$(readlink -f "$0")" "$@")"
+ScriptDir=$(dirname "$0")
+export LD_LIBRARY_PATH="/data/data/com.termux/files/usr/lib"
+export PATH="/data/data/com.termux/files/usr/bin:$PATH"
+
+command -v python > /dev/null 2>&1 || {
+    printf "找不到 python, 在 Termux 中使用 'pkg install -y python' 以安装。" >&2
+    exit 1
+}
+
+OUT_DIR=""
+if [[ -d $1 ]]; then
+    OUT_DIR="$1"
+    shift
+else
+    printf "需要指定一个输出目录。" >&2
+    exit 1
+fi
+
+# shellcheck disable=SC2046
+set -- $("$ScriptDir"/dumpdb --raw /tmp | xargs)
+TEMP_DIR=${1%/*}
+
+trap 'rm -rf "$TEMP_DIR"' EXIT HUP INT QUIT TERM
+
+if (($# == 0)) || [[ ! -d $1 ]]; then
+    printf "未找到有效账号的转储数据。" >&2
+    exit 1
+fi
+
+i=1
+for file in "$@"; do
+    printf "  [%d] %s\n" "$i" "$file"
+    ((i++))
+done
+
+printf "选择一个账号: "
+read -r choice < /dev/tty
+if [[ -z $choice ]] || ((choice < 1 || choice > $#)); then
+    exit 1
+fi
+
+shift $((choice - 1))
+DB_DIR="$1"
+
+printf "\n"
+
+python "$ScriptDir/chat_export/main.py" --input "$DB_DIR" --output "$OUT_DIR"
+
+# 此处不应使用 exec ...
+# 确保内存盘中的文件能够正确清理

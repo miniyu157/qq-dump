@@ -3,3 +3,4 @@ db_output/
 *.lock
 *.pid
 .dev
+chat_export/non_friends_cache.json
