@@ -20,6 +20,7 @@ last=$((${#files[@]} - 1))
 
 for i in "${!files[@]}"; do
     UidFile=${files[$i]}
+    [[ -e $UidFile ]] || continue
 
     QQPath="${UidFile%/files/uid/*}"
 
