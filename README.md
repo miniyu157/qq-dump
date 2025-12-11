@@ -44,30 +44,45 @@ ln -s ~/.local/bin/qq-dump-bin/qq-dump ~/.local/bin/qq-dump
 
 ## 用法
 
-**`qq-dump key` 命令用于获取账号信息与密钥**
-
 ```
 qq-dump key [--raw]
 ```
 
-加上 `--raw` 选项即可得到机器可读的原始数据, 通常用于管道操作
+**`qq-dump key` 用于获取账号信息与密钥**
+
+`--raw`: 获取机器可读的原始数据, 通常用于管道操作
 
 ---
 
-**`qq-dump db` 命令用于解密数据库, 依赖 `./dumpkey` 获取密钥**
+**`qq-dump db` 用于解密数据库, 依赖 `./dumpkey` 获取密钥**
 
 ```
-qq-dump db [--use-disk] [path=db_output/]
+qq-dump db [--raw] [--use-disk] [path=db_output/]
 ```
 
-默认会将文件输出到脚本所在文件夹的 `db_output/`,
-可以使用参数指定一个新的路径, 需要确保那个路径存在
+`--raw`: 简化输出, 通常用于管道操作
+`--use-disk`: 改为使用磁盘读写临时文件, 默认使用 /tmp (tmpfs) 
+`PATH`: 指定一个新的输出路径, 需要确保那个文件夹存在。默认为 `db_output/`
 
-临时文件使用 /tmp (tmpfs) 以获得更快的读写速度,
-使用 `--use-disk` 选项即可使用磁盘进行读写临时文件
+> [!TIP]
+> 如果你追求更快的速度, 可以直接指定输出目录为 /tmp
 
-如果脚本所在文件夹的 `./db_list.txt` 存在且非空, 则仅解密列表中指定的数据库,
-默认有 nt_msg.db 和 profile_info.db, 每行一个文件名
+> [!NOTE]
+> 如果脚本所在文件夹的 `./db_list.txt` 存在且非空, 则仅解密列表中指定的数据库,
+> 默认有 nt_msg.db 和 profile_info.db, 每行一个文件名
+
+---
+
+**`qq-dump chat` 用于导出人类可读的聊天记录文本, 依赖 `./dumpdb` 与 `chat_export` 中的 Python 脚本**
+
+```
+qq-dump chat <OUTDIR>
+```
+
+`chat_export/main.py` 原本是 [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt) 项目中的 `export_chats.py`, 完成度非常高
+QQ DUMP 内置的版本为兼容版本
+
+`chat_export/LICENSE` 中的署名 "KlxPiao", 就是我的另一个笔名
 
 ---
 
@@ -75,12 +90,6 @@ qq-dump db [--use-disk] [path=db_output/]
 
 - db = database
 - key = k
-
-## 关于从数据库中提取人类可读的文本
-
-我的另一个仓库 [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt) 虽然已经归档, 它是 100% 由 LLM 编写的, 其中的 `export_chats.py` 完成度非常高, 并且难以维护
-
-我不知道应该怎样将它与 qq-dump 配合, 如果你有想法, 请告诉我或者提交 issues。谢谢!
 
 ## 致谢
 

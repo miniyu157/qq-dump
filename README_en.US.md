@@ -44,30 +44,45 @@ ln -s ~/.local/bin/qq-dump-bin/qq-dump ~/.local/bin/qq-dump
 
 ## Usage
 
-**The `qq-dump key` command is used to retrieve account information and keys.**
-
 ```
 qq-dump key [--raw]
 ```
 
-Adding the `--raw` option yields machine-readable raw data, typically for piping operations.
+**`qq-dump key` is used to retrieve account information and keys.**
+
+`--raw`: Get machine-readable raw data, typically for piping operations.
 
 ---
 
-**The `qq-dump db` command is used to decrypt the database; it relies on `./dumpkey` to obtain the key.**
+**`qq-dump db` is used to decrypt the database; it relies on `./dumpkey` to obtain the key.**
 
 ```
-qq-dump db [--use-disk] [path=db_output/]
+qq-dump db [--raw] [--use-disk] [path=db_output/]
 ```
 
-By default, files are output to `db_output/` in the script's directory.
-You can specify a new path as an argument; ensure that the path exists.
+`--raw`: Simplify output, typically for piping operations.
+`--use-disk`: Use disk for reading/writing temporary files, defaults to /tmp (tmpfs).
+`PATH`: Specify a new output path; ensure that the directory exists. Defaults to `db_output/`.
 
-Temporary files use /tmp (tmpfs) for faster read/write speeds.
-Use the `--use-disk` option to use the disk for reading and writing temporary files.
+> [!TIP]
+> If you aim for faster speeds, you can directly specify the output directory as /tmp.
 
-If `./db_list.txt` in the script's directory exists and is not empty, only the databases specified in the list will be decrypted.
-Default files are `nt_msg.db` and `profile_info.db`, listed one filename per line.
+> [!NOTE]
+> If `./db_list.txt` in the script directory exists and is not empty, only the databases specified in the list will be decrypted.
+> Default files are `nt_msg.db` and `profile_info.db`, listed one filename per line.
+
+---
+
+**`qq-dump chat` is used to export human-readable chat logs, relying on `./dumpdb` and Python scripts in `chat_export`.**
+
+```
+qq-dump chat <OUTDIR>
+```
+
+`chat_export/main.py` is originally `export_chats.py` from the [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt) project, which has a very high completion rate.
+The version built into QQ DUMP is a compatible version.
+
+The signature "KlxPiao" in `chat_export/LICENSE` is my other pen name.
 
 ---
 
@@ -75,12 +90,6 @@ Default files are `nt_msg.db` and `profile_info.db`, listed one filename per lin
 
 - db = database
 - key = k
-
-## About Extracting Human-Readable Text from Databases
-
-Although my other repository [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt) is now archived, it was written 100% by LLMs. The included `export_chats.py` is highly functional but difficult to maintain.
-
-I am unsure how to best integrate it with `qq-dump`. If you have any ideas, please let me know or submit an issue. Thank you!
 
 ## Credits
 
