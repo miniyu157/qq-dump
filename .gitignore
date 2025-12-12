@@ -1,7 +1,10 @@
 *.bak
-db_output/
-.mock_env/
 *.lock
 *.pid
+
 .dev
+
+db_output/
+.mock_env/
 chat_export/non_friends_cache.json
+chat_export/export_config.json
