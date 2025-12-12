@@ -97,6 +97,18 @@ The signature "KlxPiao" in `chat_export/LICENSE` is my other pen name.
 - db = database
 - key = k
 
+## Development & Debugging
+
+Run `./mock` to simulate the Android filesystem environment. Requires `proot` and `mksh`.
+It maps specific Android directories into `./.mock_env`, for example:
+
+- `/data/user/0/com.tencent.mobileqq/...`
+- `/sdcard`
+- `/tmp`
+
+It also links your installed mksh, tricking qq-dump into perceiving that `/system/bin/sh` exists (actually pointing to `/usr/bin/mksh` or similar).
+If mksh is absent, it falls back to bash, though this may lead to compatibility issues.
+
 ## Credits
 
 The decryption algorithm concept is derived from [QQBackup/QQDecrypt](https://github.com/QQBackup/QQDecrypt/).

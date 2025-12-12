@@ -97,6 +97,18 @@ QQ DUMP 内嵌了 [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQR
 - db = database
 - key = k
 
+## 开发与调试
+
+启动 `./mock` 即可模拟 Android 的文件系统环境, 前提是安装了 `proot` 和 `mksh`。
+它会将一些 Android 文件夹映射到 `./.mock_env` 中, 例如:
+
+- `/data/user/0/com.tencent.mobileqq/...`
+- `/sdcard`
+- `/tmp`
+
+以及你安装的 mksh, 它让 qq-dump 以为 `/system/bin/sh` 存在, 实际上指向 `/usr/bin/mksh` 之类的位置,
+如果没有安装 mksh, 则回退到 bash, 但这可能导致兼容性问题
+
 ## 致谢
 
 解密算法思路源自 [QQBackup/QQDecrypt](https://github.com/QQBackup/QQDecrypt/)
