@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+MOCK_DIR=".mock_env"
+REAL_SHELL="$(which mksh 2> /dev/null || which bash)"
+
+mkdir -p "$MOCK_DIR/data/user/0/com.tencent.mobileqq/databases/nt_db"
+mkdir -p "$MOCK_DIR/data/user/0/com.tencent.mobileqq/files/uid"
+mkdir -p "$MOCK_DIR/sdcard"
+mkdir -p "$MOCK_DIR/tmp"
+
+export PATH="/system/bin:/workdir:$PATH"
+
+exec proot -0 \
+    -b "$REAL_SHELL:/system/bin/sh" \
+    -b "$MOCK_DIR/data:/data" \
+    -b "$MOCK_DIR/sdcard:/sdcard" \
+    -b "$MOCK_DIR/tmp:/tmp" \
+    -b .:/workdir \
+    -w /workdir \
+    "${@:-$SHELL}"

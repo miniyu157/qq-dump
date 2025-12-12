@@ -1,5 +1,6 @@
 *.bak
 db_output/
+.mock_env/
 *.lock
 *.pid
 .dev
