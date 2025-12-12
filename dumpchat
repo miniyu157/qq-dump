@@ -10,10 +10,38 @@ ScriptDir=$(dirname "$0")
 export LD_LIBRARY_PATH="/data/data/com.termux/files/usr/lib"
 export PATH="/data/data/com.termux/files/usr/bin:$PATH"
 
-command -v python > /dev/null 2>&1 || {
+PYTHON_DIR="$ScriptDir/chat_export"
+PYTHON_EXEC="python"
+for venv in "$PYTHON_DIR/.venv" "$PYTHON_DIR/venv"; do
+    [[ -x "$venv/bin/python" ]] && {
+        PYTHON_EXEC="$venv/bin/python"
+        break
+    }
+done
+
+command -v "$PYTHON_EXEC" > /dev/null 2>&1 || {
     printf "找不到 python, 在 Termux 中使用 'pkg install -y python' 以安装。" >&2
     exit 1
 }
+
+if ! "$PYTHON_EXEC" -c "import blackboxprotobuf" > /dev/null 2>&1; then
+    printf "缺少 blackboxprotobuf, 尝试安装...\n"
+
+    if ! "$PYTHON_EXEC" -m pip install blackboxprotobuf > /dev/null 2>&1; then
+        if [[ $PYTHON_EXEC == "python" ]]; then
+            "$PYTHON_EXEC" -m venv "$PYTHON_DIR/.venv" || exit 1
+            PYTHON_EXEC="$PYTHON_DIR/.venv/bin/python"
+
+            "$PYTHON_EXEC" -m pip install blackboxprotobuf || {
+                printf "虚拟环境依赖安装失败。\n" >&2
+                exit 1
+            }
+        else
+            printf "安装失败, 请检查网络或 pip 源。\n" >&2
+            exit 1
+        fi
+    fi
+fi
 
 OUT_DIR=""
 if [[ -d $1 ]]; then
@@ -52,7 +80,7 @@ DB_DIR="$1"
 
 printf "\n"
 
-python "$ScriptDir/chat_export/main.py" --input "$DB_DIR" --output "$OUT_DIR"
+"$PYTHON_EXEC" "$PYTHON_DIR/main.py" --input "$DB_DIR" --output "$OUT_DIR"
 
 # 此处不应使用 exec ...
 # 确保内存盘中的文件能够正确清理
