@@ -15,11 +15,12 @@ An ultra-fast NTQQ database key extraction, decryption, and chat history export 
 
 - Root Access
 - sqlcipher binary
+- python
 
 qq-dump utilizes Termux binaries. Enter Termux and use the following command to install dependencies:
 
 ```bash
-pkg install -y sqlcipher git coreutils
+pkg install -y sqlcipher git coreutils python
 ```
 
 ## Installation

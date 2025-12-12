@@ -15,11 +15,12 @@
 
 - Root 权限
 - sqlcipher 二进制文件
+- python
 
 qq-dump 会使用 termux 的二进制文件, 进入 Termux 使用以下命令补全依赖
 
 ```bash
-pkg install -y sqlcipher git coreutils
+pkg install -y sqlcipher git coreutils python
 ```
 
 ## 安装
