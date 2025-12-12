@@ -44,25 +44,25 @@ ln -s ~/.local/bin/qq-dump-bin/qq-dump ~/.local/bin/qq-dump
 
 ## 用法
 
-```
+**`dumpkey` 用于获取账号信息与密钥**
+
+```bash
 qq-dump key [--raw]
 ```
-
-**`qq-dump key` 用于获取账号信息与密钥**
 
 `--raw`: 获取机器可读的原始数据, 通常用于管道操作
 
 ---
 
-**`qq-dump db` 用于解密数据库, 依赖 `./dumpkey` 获取密钥**
+**`dumpdb` 用于解密数据库, 依赖 `./dumpkey` 获取密钥**
 
-```
+```bash
 qq-dump db [--raw] [--use-disk] [path=db_output/]
 ```
 
 `--raw`: 简化输出, 通常用于管道操作
 
-`--use-disk`: 改为使用磁盘读写临时文件, 默认使用 /tmp (tmpfs) 
+`--use-disk`: 改为使用磁盘读写临时文件, 默认使用 /tmp (tmpfs)
 
 `PATH`: 指定一个新的输出路径, 需要确保那个文件夹存在。默认为 `db_output/`
 
@@ -75,29 +75,30 @@ qq-dump db [--raw] [--use-disk] [path=db_output/]
 
 ---
 
-**`qq-dump chat` 用于导出人类可读的聊天记录文本, 依赖 `./dumpdb` 与 `chat_export` 中的 Python 脚本**
+**`dumpchat` 用于导出人类可读的聊天记录文本, 依赖 `./dumpdb` 与 `chat_export` 中的 Python 脚本**
 
-```
+```bash
 qq-dump chat <OUTDIR>
 ```
 
-该命令内部调用了 `./dumpdb --raw /tmp`, 中间文件 100% 存在于内存中, 速度极快
+这个命令内部调用了 `./dumpdb --raw /tmp`, 中间文件 100% 存在于内存中, 速度极快
 
-`chat_export/main.py` 原本是 [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt) 项目中的 `export_chats.py`, 完成度非常高, 
-QQ DUMP 内置的版本为兼容版本, 我只最小化修改了部分参数解析, 还未做更多的优化和适配
+QQ DUMP 内嵌了 [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt) 中的 python 脚本。我修改了部分参数解析, 还未做更多的优化和适配
+
+虽然 QQRootFastDecrypt 仓库已经归档, 但是其中的 `export_chats.py` 完成度非常高, 它是 100% 由 LLM 完成的, 所以难以维护
 
 `chat_export/LICENSE` 中的署名 "KlxPiao", 就是我的另一个笔名
 
 ---
 
-**别名**
+### 别名
 
 - db = database
 - key = k
 
 ## 致谢
 
-解密算法思路源自 [QQBackup/QQDecrypt](https://github.com/QQBackup/QQDecrypt/)。
+解密算法思路源自 [QQBackup/QQDecrypt](https://github.com/QQBackup/QQDecrypt/)
 
 ## 许可证
 

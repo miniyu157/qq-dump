@@ -44,19 +44,19 @@ ln -s ~/.local/bin/qq-dump-bin/qq-dump ~/.local/bin/qq-dump
 
 ## Usage
 
-```
+**`dumpkey` is used to retrieve account information and keys.**
+
+```bash
 qq-dump key [--raw]
 ```
-
-**`qq-dump key` is used to retrieve account information and keys.**
 
 `--raw`: Get machine-readable raw data, typically for piping operations.
 
 ---
 
-**`qq-dump db` is used to decrypt the database; it relies on `./dumpkey` to obtain the key.**
+**`dumpdb` is used to decrypt the database; it relies on `./dumpkey` to obtain the key.**
 
-```
+```bash
 qq-dump db [--raw] [--use-disk] [path=db_output/]
 ```
 
@@ -75,21 +75,23 @@ qq-dump db [--raw] [--use-disk] [path=db_output/]
 
 ---
 
-**`qq-dump chat` is used to export human-readable chat logs, relying on `./dumpdb` and Python scripts in `chat_export`.**
+**`dumpchat` is used to export human-readable chat logs, relying on `./dumpdb` and Python scripts in `chat_export`.**
 
-```
+```bash
 qq-dump chat <OUTDIR>
 ```
 
 This command internally invokes ./dumpdb --raw /tmp. Intermediate files reside entirely in memory, ensuring ultra-fast performance.
 
-`chat_export/main.py` is originally `export_chats.py` from the [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt) project, which has a very high completion rate. The version built into QQ DUMP is a compatible version.
+QQ DUMP embeds the Python scripts from [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt). I modified parts of the argument parsing, but further optimization and adaptation have not yet been done.
+
+Although the QQRootFastDecrypt repository is archived, its `export_chats.py` has very high completeness. It was generated entirely by an LLM, which makes maintenance difficult.
 
 The signature "KlxPiao" in `chat_export/LICENSE` is my other pen name.
 
 ---
 
-**Aliases**
+### Aliases
 
 - db = database
 - key = k
