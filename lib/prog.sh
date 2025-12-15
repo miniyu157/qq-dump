@@ -16,7 +16,7 @@ loading() (
 
     trap 'printf "\r\033[K\033[?25h"; exit' INT TERM EXIT
 
-    set -- ⠁⠀ ⠋⠀ ⠟⠁ ⠞⠁ ⡕⠉ ⣕⠝ ⢐⡴ ⢀⡴ ⠀⣠ ⠀⢀
+    set -- ⠀⠀ ⠁⠀ ⠁⠀ ⠋⠀ ⠟⠁ ⡞⠍ ⣾⣿ ⣴⣿ ⣐⣼ ⠐⣤ ⠀⢄ ⠀⢀ ⠀⠀
 
     printf '\033[?25l'
 
