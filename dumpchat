@@ -52,13 +52,29 @@ else
     exit 1
 fi
 
+[[ -f "$ScriptDir/lib/prog.sh" ]] || {
+    echo "错误: 未找到 $ScriptDir/lib/prog.sh" >&2
+    exit 1
+}
+source "$ScriptDir/lib/prog.sh"
+
+STDOUT="$ScriptDir/dumpdb.out"
+STDERR="$ScriptDir/dumpdb.err.out"
 DB_OUT_DIR="/tmp/dumpchat.$$.tmp"
 mkdir -p "$DB_OUT_DIR"
 
-trap 'rm -rf "$DB_OUT_DIR"' EXIT HUP INT QUIT TERM
+trap 'rm -f "$STDOUT" "$STDERR"; rm -rf "$DB_OUT_DIR"' EXIT HUP INT QUIT TERM
+
+"$ScriptDir"/dumpdb --raw "$DB_OUT_DIR" > "$STDOUT" 2> "$STDERR" &
+PID=$!
+loading "$PID" Dumping...
+wait "$PID" || {
+    [[ -e $STDERR ]] && cat "$STDERR" >&2
+    exit 1
+}
 
 # shellcheck disable=SC2046
-set -- $("$ScriptDir"/dumpdb --raw "$DB_OUT_DIR" | xargs)
+set -- $(xargs < "$STDOUT")
 
 if (($# == 0)) || [[ ! -d $1 ]]; then
     printf "未找到有效账号的转储数据。" >&2
