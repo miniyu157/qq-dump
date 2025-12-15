@@ -83,7 +83,7 @@ fi
 
 i=1
 for file in "$@"; do
-    printf "  [%d] %s\n" "$i" "$file"
+    printf "  [%d] %s\n" "$i" "${file##*/}"
     ((i++))
 done
 
