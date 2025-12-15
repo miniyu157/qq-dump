@@ -52,11 +52,13 @@ else
     exit 1
 fi
 
-# shellcheck disable=SC2046
-set -- $("$ScriptDir"/dumpdb --raw /tmp | xargs)
-TEMP_DIR=${1%/*}
+DB_OUT_DIR="/tmp/dumpchat.$$.tmp"
+mkdir -p "$DB_OUT_DIR"
 
-trap 'rm -rf "$TEMP_DIR"' EXIT HUP INT QUIT TERM
+trap 'rm -rf "$DB_OUT_DIR"' EXIT HUP INT QUIT TERM
+
+# shellcheck disable=SC2046
+set -- $("$ScriptDir"/dumpdb --raw "$DB_OUT_DIR" | xargs)
 
 if (($# == 0)) || [[ ! -d $1 ]]; then
     printf "未找到有效账号的转储数据。" >&2

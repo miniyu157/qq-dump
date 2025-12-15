@@ -24,6 +24,7 @@ command -v sqlcipher > /dev/null 2>&1 || {
 
 USE_DISK=0
 RAW=0
+
 OUT_DIR="$ScriptDir/db_output"
 
 while (($# > 0)); do
@@ -51,6 +52,17 @@ done
 [[ ! -w "/tmp" ]] && USE_DISK=1
 
 mkdir -p "$OUT_DIR"
+
+if ((USE_DISK == 1)); then
+    TMP_DIR="$ScriptDir/dumpdb.$$.tmp"
+else
+    TMP_DIR="/tmp/dumpdb.$$.tmp"
+fi
+mkdir -p "$TMP_DIR"
+cleanup() {
+    rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT HUP INT QUIT TERM
 
 TIMESPAN="$(date +%Y-%m-%d_%H-%M-%S)"
 
@@ -80,10 +92,7 @@ TIMESPAN="$(date +%Y-%m-%d_%H-%M-%S)"
 
         final_db="$target_dir/${_db_name%.*}.db"
 
-        tmp_clean="/tmp/.tmp_${_db_name}"
-        ((USE_DISK == 1)) && {
-            tmp_clean="$target_dir/.tmp_${_db_name}"
-        }
+        tmp_clean="$TMP_DIR/.tmp_${_db_name}"
         dd if="$db_path" of="$tmp_clean" bs=1024 skip=1 2> /dev/null
 
         rm -f "$final_db"
