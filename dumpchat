@@ -13,6 +13,7 @@ export PATH="/data/data/com.termux/files/usr/bin:$PATH"
 PYTHON_DIR="$ScriptDir/chat_export"
 REQ_FILE="$PYTHON_DIR/requirements.txt"
 PYTHON_EXEC="python"
+Self="${0##*/}"
 for venv in "$PYTHON_DIR/.venv" "$PYTHON_DIR/venv"; do
     [[ -x "$venv/bin/python" ]] && {
         PYTHON_EXEC="$venv/bin/python"
@@ -21,28 +22,28 @@ for venv in "$PYTHON_DIR/.venv" "$PYTHON_DIR/venv"; do
 done
 
 command -v "$PYTHON_EXEC" > /dev/null 2>&1 || {
-    printf "找不到 python, 在 Termux 中使用 'pkg install -y python' 以安装。" >&2
+    printf "%s: 找不到 python, 在 Termux 中使用 'pkg install -y python' 以安装。\n" "$Self" >&2
     exit 1
 }
 
 if [[ ! -f $REQ_FILE ]]; then
-    printf "找不到文件 '%s'\n" "$REQ_FILE" >&2
+    printf "%s: 找不到文件 %s\n" "$Self" "$REQ_FILE" >&2
     exit 1
 fi
 
 if ! "$PYTHON_EXEC" -m pip install -r "$REQ_FILE" > /dev/null 2>&1; then
-    printf "补全 Python 依赖...\n"
+    printf "%s: 补全 Python 依赖...\n" "$Self"
 
     if [[ $PYTHON_EXEC == "python" ]]; then
         "$PYTHON_EXEC" -m venv "$PYTHON_DIR/.venv" || exit 1
         PYTHON_EXEC="$PYTHON_DIR/.venv/bin/python"
 
         "$PYTHON_EXEC" -m pip install -r "$REQ_FILE" || {
-            printf "虚拟环境依赖安装失败。\n" >&2
+            printf "%s: 虚拟环境依赖安装失败。\n" "$Self" >&2
             exit 1
         }
     else
-        printf "安装失败, 建议检查 requirements.txt、网络或 pip 源。\n" >&2
+        printf "%s: 安装失败, 建议检查 requirements.txt、网络或 pip 源。\n" "$Self" >&2
         exit 1
     fi
 fi
@@ -52,12 +53,12 @@ if [[ -d $1 ]]; then
     OUT_DIR="$1"
     shift
 else
-    printf "需要指定一个输出目录。" >&2
+    printf "%s: 没有那个文件夹: %s\n" "$Self" "$1" >&2
     exit 1
 fi
 
 [[ -f "$ScriptDir/lib/prog.sh" ]] || {
-    echo "错误: 未找到 $ScriptDir/lib/prog.sh" >&2
+    printf "%s: 未找到 %s/lib/prog.sh\n" "$Self" "$ScriptDir" >&2
     exit 1
 }
 source "$ScriptDir/lib/prog.sh"
@@ -81,7 +82,7 @@ wait "$PID" || {
 set -- $(xargs < "$STDOUT")
 
 if (($# == 0)) || [[ ! -d $1 ]]; then
-    printf "未找到有效账号的转储数据。" >&2
+    printf "%s: 未找到有效账号的转储数据。\n" "$Self" >&2
     exit 1
 fi
 

@@ -9,6 +9,7 @@
 ScriptDir=$(dirname "$0")
 export LD_LIBRARY_PATH="/data/data/com.termux/files/usr/lib"
 export PATH="/data/data/com.termux/files/usr/bin:$PATH"
+Self="${0##*/}"
 
 # colorize
 if [[ -t 1 ]] || [[ -n $FORCE_COLOR ]]; then
@@ -18,7 +19,7 @@ fi
 readonly COFF BLUE
 
 command -v sqlcipher > /dev/null 2>&1 || {
-    printf "找不到 sqlcipher, 在 Termux 中使用 'pkg install -y sqlcipher' 以安装。" >&2
+    printf "%s: 找不到 sqlcipher, 在 Termux 中使用 'pkg install -y sqlcipher' 以安装。\n" "$Self" >&2
     exit 1
 }
 
@@ -41,7 +42,7 @@ while (($# > 0)); do
             if [[ -d $1 ]]; then
                 OUT_DIR="$1"
             else
-                printf "不是文件夹: %s" "$1" >&2
+                printf "%s: 没有那个文件夹: %s\n" "$Self" "$1" >&2
                 exit 1
             fi
             shift
