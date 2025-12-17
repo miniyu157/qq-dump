@@ -11,6 +11,7 @@ export LD_LIBRARY_PATH="/data/data/com.termux/files/usr/lib"
 export PATH="/data/data/com.termux/files/usr/bin:$PATH"
 
 PYTHON_DIR="$ScriptDir/chat_export"
+REQ_FILE="$PYTHON_DIR/requirements.txt"
 PYTHON_EXEC="python"
 for venv in "$PYTHON_DIR/.venv" "$PYTHON_DIR/venv"; do
     [[ -x "$venv/bin/python" ]] && {
@@ -24,22 +25,25 @@ command -v "$PYTHON_EXEC" > /dev/null 2>&1 || {
     exit 1
 }
 
-if ! "$PYTHON_EXEC" -c "import blackboxprotobuf" > /dev/null 2>&1; then
-    printf "缺少 blackboxprotobuf, 尝试安装...\n"
+if [[ ! -f $REQ_FILE ]]; then
+    printf "找不到文件 '%s'\n" "$REQ_FILE" >&2
+    exit 1
+fi
 
-    if ! "$PYTHON_EXEC" -m pip install blackboxprotobuf > /dev/null 2>&1; then
-        if [[ $PYTHON_EXEC == "python" ]]; then
-            "$PYTHON_EXEC" -m venv "$PYTHON_DIR/.venv" || exit 1
-            PYTHON_EXEC="$PYTHON_DIR/.venv/bin/python"
+if ! "$PYTHON_EXEC" -m pip install -r "$REQ_FILE" > /dev/null 2>&1; then
+    printf "补全 Python 依赖...\n"
 
-            "$PYTHON_EXEC" -m pip install blackboxprotobuf || {
-                printf "虚拟环境依赖安装失败。\n" >&2
-                exit 1
-            }
-        else
-            printf "安装失败, 请检查网络或 pip 源。\n" >&2
+    if [[ $PYTHON_EXEC == "python" ]]; then
+        "$PYTHON_EXEC" -m venv "$PYTHON_DIR/.venv" || exit 1
+        PYTHON_EXEC="$PYTHON_DIR/.venv/bin/python"
+
+        "$PYTHON_EXEC" -m pip install -r "$REQ_FILE" || {
+            printf "虚拟环境依赖安装失败。\n" >&2
             exit 1
-        fi
+        }
+    else
+        printf "安装失败, 建议检查 requirements.txt、网络或 pip 源。\n" >&2
+        exit 1
     fi
 fi
 
