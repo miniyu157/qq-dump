@@ -45,7 +45,13 @@ ln -s ~/.local/bin/qq-dump-bin/qq-dump ~/.local/bin/qq-dump
 
 ## 用法
 
-**`dumpkey` 用于获取账号信息与密钥**
+### 快速开始
+
+```bash
+qq-dump chat /sdcard
+```
+
+### **`dumpkey`: 获取账号信息与密钥**
 
 ```bash
 qq-dump key [--raw]
@@ -55,7 +61,7 @@ qq-dump key [--raw]
 
 ---
 
-**`dumpdb` 用于解密数据库, 依赖 `./dumpkey` 获取密钥**
+### **`dumpdb`: 解密数据库, 依赖 `./dumpkey` 获取密钥**
 
 ```bash
 qq-dump db [--raw] [--use-disk] [path=db_output/]
@@ -76,7 +82,7 @@ qq-dump db [--raw] [--use-disk] [path=db_output/]
 
 ---
 
-**`dumpchat` 用于导出人类可读的聊天记录文本, 依赖 `./dumpdb` 与 `chat_export` 中的 Python 脚本**
+### **`dumpchat`: 导出人类可读的聊天记录文本, 依赖 `./dumpdb` 与 `chat_export` 中的 Python 脚本**
 
 ```bash
 qq-dump chat <OUTDIR>
@@ -87,6 +93,8 @@ qq-dump chat <OUTDIR>
 QQ DUMP 内嵌了 [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt) 中的 python 脚本。我修改了部分参数解析, 还未做更多的优化和适配
 
 虽然 QQRootFastDecrypt 仓库已经归档, 但是其中的 `export_chats.py` 完成度非常高, 它是 100% 由 LLM 完成的, 所以难以维护
+
+我正在写最新的功能, 查看 [提交记录](https://github.com/miniyu157/qq-dump/commits/main/) 以了解详情, 例如从 4f38eae 开始
 
 `chat_export/LICENSE` 中的署名 "KlxPiao", 就是我的另一个笔名
 
