@@ -8,4 +8,8 @@ db_output/
 .mock_env/
 chat_export/non_friends_cache.json
 chat_export/export_config.json
-chat_export/__pycache__
+__pycache__/
+**/__pycache__/
+.vscode
+**/.envrc
+.envrc
