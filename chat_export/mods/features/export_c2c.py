@@ -9,7 +9,7 @@ import warnings
 import mods.schema as dbsma
 import mods.msg as msg
 
-META = {"key": "3", "title": "[Dev] 导出 C2C 消息", "order": 3}
+META = {"key": "2", "title": "[Dev] 导出 C2C 消息", "order": 2}
 
 try:
     warnings.filterwarnings("ignore", message="pkg_resources is deprecated.*")
