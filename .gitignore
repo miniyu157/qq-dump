@@ -6,10 +6,17 @@
 
 db_output/
 .mock_env/
-chat_export/non_friends_cache.json
-chat_export/export_config.json
-__pycache__/
-**/__pycache__/
+
 .vscode
-**/.envrc
 .envrc
+.ruff_cache
+__pycache__/
+non_friends_cache.json
+export_config.json
+
+**/.vscode
+**/.envrc
+**/.ruff_cache
+**/__pycache__/
+**/non_friends_cache.json
+**/export_config.json

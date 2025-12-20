@@ -1,3 +1,7 @@
+# Part of QQRootFastDecrypt <https://github.com/miniyu157/QQRootFastDecrypt>
+# Licensed under the MIT License.
+# Modified for QQ DUMP.
+
 # -*- coding: utf-8 -*-
 """
 QQ NT 聊天记录导出工具
