@@ -29,11 +29,11 @@ pkg install -y sqlcipher git coreutils python
 Requires a terminal emulator, such as [termux/termux-app](https://github.com/termux/termux-app/releases).
 
 ```bash
-git clone https://github.com/miniyu157/qq-dump.git ~/.local/bin/qq-dump-bin
+git clone https://github.com/miniyu157/qq-dump.git ~/.local/bin/qq-dump-main
 ```
 
 ```bash
-ln -s ~/.local/bin/qq-dump-bin/qq-dump ~/.local/bin/qq-dump
+ln -s ~/.local/bin/qq-dump-main/qq-dump ~/.local/bin/qq-dump
 ```
 
 > If you use a different symlink name, replace `qq-dump` with your custom name in the examples below.

@@ -28,11 +28,11 @@ pkg install -y sqlcipher git coreutils python
 你需要一款终端模拟器, 例如 [termux/termux-app](https://github.com/termux/termux-app/releases)
 
 ```bash
-git clone https://github.com/miniyu157/qq-dump.git ~/.local/bin/qq-dump-bin
+git clone https://github.com/miniyu157/qq-dump.git ~/.local/bin/qq-dump-main
 ```
 
 ```bash
-ln -s ~/.local/bin/qq-dump-bin/qq-dump ~/.local/bin/qq-dump
+ln -s ~/.local/bin/qq-dump-main/qq-dump ~/.local/bin/qq-dump
 ```
 
 > 如果指定了其它软链接名称, 则下文用法中替换为你的自定义名称
