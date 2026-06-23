@@ -7,7 +7,7 @@ Follows the KISS principle and Unix philosophy. Features I/O strategies optimize
 
 [English](./README_en.US.md) | [简体中文](./README.md)
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Shell Check](https://img.shields.io/badge/ShellCheck-passing-success)
 
 </div>
@@ -118,7 +118,7 @@ Decryption algorithm concept derived from [QQBackup/QQDecrypt](https://github.co
 
 ## License
 
-This project is licensed under the **GNU General Public License v3.0 (GPLv3)**.
+This project is licensed under the **MIT License**.
 See the [LICENSE](LICENSE) file for details.
 
 Copyright (C) 2025 Yumeka <miniyu157@163.com>

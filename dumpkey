@@ -1,8 +1,6 @@
 #!/system/bin/sh
 
 # A minimalist, dependency-free QQ NT database key extractor for Android
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2025 Yumeka <miniyu157@163.com>
 
 # shellcheck shell=ksh
 

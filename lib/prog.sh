@@ -1,8 +1,6 @@
 #!/usr/bin/env sh
 # shellcheck shell=sh
 
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2025 Yumeka <miniyu157@163.com>
 
 # Description: A POSIX-compliant loading animation function
 # Author: Yumeka <miniyu157@163.com>

@@ -6,7 +6,7 @@
 
 [English](./README_en.US.md) | [简体中文](./README.md)
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Shell Check](https://img.shields.io/badge/ShellCheck-passing-success)
 
 </div>
@@ -123,7 +123,7 @@ QQ DUMP 内嵌了 [miniyu157/QQRootFastDecrypt](https://github.com/miniyu157/QQR
 
 ## 许可证
 
-本项目采用 **GNU General Public License v3.0 (GPLv3)** 进行授权。
+本项目采用 **MIT License** 进行授权。
 详见 [LICENSE](LICENSE) 文件。
 
 Copyright (C) 2025 Yumeka <miniyu157@163.com>
