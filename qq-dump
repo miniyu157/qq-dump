@@ -4,8 +4,13 @@
 # shellcheck shell=bash
 
 SelfRoot="$(dirname "$(readlink -f "$0")")"
-GitBranch="$(git -C "$SelfRoot" rev-parse --abbrev-ref HEAD)"
-SELF_VERSION="r$(git -C "$SelfRoot" rev-list --count HEAD)-$(git -C "$SelfRoot" rev-parse --short HEAD)"
+if [[ -d "$SelfRoot/.git" ]]; then
+    GitBranch="$(git -C "$SelfRoot" rev-parse --abbrev-ref HEAD)"
+    SELF_VERSION="r$(git -C "$SelfRoot" rev-list --count HEAD)-$(git -C "$SelfRoot" rev-parse --short HEAD)"
+else
+    GitBranch="unknown"
+    SELF_VERSION="unknown"
+fi
 Self="${0##*/}"
 
 # colorize
@@ -19,15 +24,6 @@ if [[ -t 1 ]] || [[ -n $FORCE_COLOR ]]; then
 fi
 readonly COFF BOLD GREEN YELLOW GRAY
 
-[[ -f "$SelfRoot/.dev" ]] || {
-    [[ -f "$SelfRoot/update.lock" ]] && {
-        echo "$Self 上次启动时进行了更新, 更新内容是:"
-        cat "$SelfRoot/update.lock"
-        rm -f "$SelfRoot/update.lock"
-        echo ""
-    }
-    (cd "$SelfRoot" && bash update > /dev/null 2>&1 &)
-}
 
 usage() {
     cat << EOF
