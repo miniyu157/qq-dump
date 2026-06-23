@@ -1,7 +1,7 @@
-#!/system/bin/sh
+#!/usr/bin/env bash
 
 
-# shellcheck shell=ksh
+# shellcheck shell=bash
 
 SelfRoot="$(dirname "$(readlink -f "$0")")"
 GitBranch="$(git -C "$SelfRoot" rev-parse --abbrev-ref HEAD)"
@@ -26,7 +26,7 @@ readonly COFF BOLD GREEN YELLOW GRAY
         rm -f "$SelfRoot/update.lock"
         echo ""
     }
-    (cd "$SelfRoot" && /system/bin/sh update > /dev/null 2>&1 &)
+    (cd "$SelfRoot" && bash update > /dev/null 2>&1 &)
 }
 
 usage() {

@@ -1,7 +1,7 @@
-#!/system/bin/sh
+#!/usr/bin/env bash
 
 
-# shellcheck shell=ksh
+# shellcheck shell=bash
 
 (($(id -u) != 0)) && exec su -c "$(printf "%q " "$(readlink -f "$0")" "$@")"
 ScriptDir=$(dirname "$0")
