@@ -6,6 +6,8 @@ mkdir -p "$MOCK_DIR/data/user/0/com.tencent.mobileqq/databases/nt_db"
 mkdir -p "$MOCK_DIR/data/user/0/com.tencent.mobileqq/files/uid"
 mkdir -p "$MOCK_DIR/sdcard"
 mkdir -p "$MOCK_DIR/tmp"
+mkdir -p "$MOCK_DIR/system"
+touch "$MOCK_DIR/system/build.prop"
 
 export PATH="/workdir:$PATH"
 
@@ -13,6 +15,7 @@ exec proot -0 \
     -b "$MOCK_DIR/data:/data" \
     -b "$MOCK_DIR/sdcard:/sdcard" \
     -b "$MOCK_DIR/tmp:/tmp" \
+    -b "$MOCK_DIR/system:/system" \
     -b .:/workdir \
     -w /workdir \
     "${@:-$SHELL}"

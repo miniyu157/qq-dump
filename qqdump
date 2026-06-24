@@ -1,0 +1,215 @@
+#!/usr/bin/env bash
+
+# shellcheck shell=bash
+# shellcheck disable=SC2155
+
+# @ui b=1m hl=36m title=1;3;4m
+# @ui coff=0m
+# @off
+
+check::android() {
+    [[ -d /data/data/com.termux/files/usr/bin ]] &&
+        export PATH="/data/data/com.termux/files/usr/bin:$PATH"
+
+    [[ -f /system/build.prop ]] || {
+        printf "非 Android 环境。\n" >&2
+        exit 1
+    }
+
+    command -v jq > /dev/null 2>&1 || {
+        printf "缺少 jq。\n" >&2
+        exit 1
+    }
+
+    command -v sqlcipher > /dev/null 2>&1 || {
+        printf "找不到 sqlcipher。\n" >&2
+        exit 1
+    }
+}
+check::sudo() {
+    # 确保在 Android Shell 中可以找到解释器
+    local shell=$(command -v bash || printf "%s" "/data/data/com.termux/files/usr/bin/bash")
+    (($(id -u) != 0)) && exec su -c "$(printf "%q " "$shell" "$(readlink -f "$0")" "$@")"
+}
+
+# shellcheck disable=SC2329
+init::global() { readonly SELF="${0##*/}"; }
+init::_clean() { rm -rf "$TMPDIR"; }
+init::clean() {
+    TMPDIR=$(mktemp -d "/tmp/${SELF}.XXXXXX" 2> /dev/null) || TMPDIR=$(mktemp -d)
+    trap init::_clean EXIT HUP INT QUIT TERM
+}
+init::ui() {
+    local line pair key val ansi_header=$'\e[' color_on=1
+    [[ ! -t 1 && -z ${FORCE_COLOR:-} ]] && color_on=0
+    while read -r line; do
+        [[ $line == "# @off"* ]] && return
+        [[ $line == "# @ui "* ]] && for pair in ${line#\# @ui }; do
+            key="${pair%%=*}" val="${pair#*=}"
+            if ((color_on)); then
+                declare -g "${key}=${ansi_header}${val}"
+            else
+                declare -g "${key}="
+            fi
+        done
+    done < "$(realpath "${BASH_SOURCE[0]}")"
+}
+
+tool::md5() {
+    local raw=$(printf "%s" "$1" | md5sum)
+    printf "%s" "${raw%% *}"
+}
+
+cmd::key() {
+    local -a files=(/data/user/*/com.tencent.mobileqq/files/uid/*)
+    local _uid_path
+    for _uid_path in "${files[@]}"; do
+        [[ -e $_uid_path ]] || continue
+        local qq_path="${_uid_path%/files/uid/*}"
+        local _raw_user="${qq_path#/data/user/}"
+        local user="${_raw_user%%/*}"
+        local _qqanduid="${_uid_path##*/}"
+        local qq="${_qqanduid%%###*}"
+        local uid="${_qqanduid##*###}"
+        local uid_hash=$(tool::md5 "$uid")
+        local path_hash=$(tool::md5 "${uid_hash}nt_kernel")
+        local db_dir="${qq_path}/databases/nt_db/nt_qq_${path_hash}"
+        local rand=$(strings "${db_dir}/profile_info.db" |
+            grep -A 1 'QQ_NT DB' |
+            tail -n 1 |
+            grep -oE '[a-zA-Z0-9]{8}')
+        local key=$(tool::md5 "$uid_hash$rand")
+
+        jq -n \
+            --arg qq_path "$qq_path" \
+            --arg user "$user" \
+            --arg qq "$qq" \
+            --arg uid "$uid" \
+            --arg uid_hash "$uid_hash" \
+            --arg path_hash "$path_hash" \
+            --arg db_dir "$db_dir" \
+            --arg rand "$rand" \
+            --arg key "$key" \
+            '$ARGS.named'
+    done | jq -s .
+}
+
+cmd::db() {
+    local output_dir="$PWD"
+    local -a db_files=()
+
+    while (($# > 0)); do
+        case "$1" in
+            --output)
+                [[ -n ${2:-} ]] || {
+                    printf "缺少 --output 参数。\n" >&2
+                    exit 1
+                }
+                output_dir="$2"
+                shift 2
+                ;;
+            --output=*)
+                output_dir="${1#*=}"
+                [[ -n $output_dir ]] || {
+                    printf "缺少 --output 参数。\n" >&2
+                    exit 1
+                }
+                shift
+                ;;
+            -*)
+                printf "未知选项: %s\n" "$1" >&2
+                exit 1
+                ;;
+            *)
+                db_files+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    [[ $output_dir != /* ]] && output_dir="$PWD/$output_dir"
+    mkdir -p "$output_dir"
+
+    ((${#db_files[@]} == 0)) && db_files=("nt_msg.db" "profile_info.db")
+
+    shopt -s lastpipe
+    cmd::key | jq -r '.[] | [.user, .qq, .db_dir, .key] | @tsv' |
+        while IFS=$'\t' read -r user qq db_dir key; do
+            local prefix="${user}.${qq}."
+            local db
+
+            for db in "${db_files[@]}"; do
+                local db_path="${db_dir}/${db}"
+
+                if [[ ! -f $db_path ]]; then
+                    printf "文件不存在，跳过: %s\n" "$db_path" >&2
+                    continue
+                fi
+
+                local _out_db_name="${prefix}${db}"
+                local out_db_path="${output_dir}/${_out_db_name}"
+                local out_db_tmp_path="${TMPDIR}/${_out_db_name}"
+
+                dd if="$db_path" of="$out_db_tmp_path" bs=1024 skip=1 2> /dev/null
+
+                rm -rf "$out_db_path"
+
+                {
+                    cat << SQL
+                    PRAGMA key = '$key';
+                    PRAGMA kdf_iter = 4000;
+                    PRAGMA cipher_hmac_algorithm = HMAC_SHA1;
+                    PRAGMA cipher_page_size = 4096;
+                    ATTACH DATABASE '$out_db_path' AS plaintext KEY '';
+                    SELECT sqlcipher_export('plaintext');
+                    DETACH DATABASE plaintext;
+SQL
+                } | sqlcipher "$out_db_tmp_path" > /dev/null 2>&1
+
+                rm -f "$out_db_tmp_path"
+            done
+        done
+}
+
+usage() {
+    # shellcheck disable=SC2154
+    cat << USAGE
+${b}QQ Dump — QQ NT 数据库解密工具${coff}
+
+${title}用法:${coff}
+  ${SELF} key
+  ${SELF} db [--output <目录>] [文件...]
+
+${title}运行环境:${coff}
+  仅支持 Android 环境，自动注入 Termux PATH。
+  非 root 运行时自动通过 su 提权。
+  工具依赖: jq sqlcipher
+
+${title}${SELF} key:${coff}
+  扫描设备上所有 QQ 账号，获取包含密钥的 JSON 到标准输出。
+
+${title}${SELF} db:${coff}
+  --output <目录>    指定输出目录（默认: 当前目录）
+  [文件...]          要解密的数据库文件（默认: nt_msg.db profile_info.db）
+                     文件不存在时输出错误并跳过
+USAGE
+    exit 1
+}
+
+main() {
+    check::android
+    check::sudo "$@"
+
+    init::global
+    init::clean
+    init::ui
+
+    local fn="cmd::${1}"
+    if declare -f "$fn" > /dev/null 2>&1; then
+        "$fn" "${@:2}"
+    else
+        usage
+    fi
+}
+
+[[ ${BASH_SOURCE[0]} == "${0}" ]] && main "$@"
