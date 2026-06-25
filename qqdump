@@ -3,7 +3,7 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2155
 
-# @ui b=1m hl=36m title=1;3;4m
+# @ui b=1m hl=36m title=1;3;4m desc=2m
 # @ui coff=0m
 # @off
 
@@ -54,6 +54,35 @@ init::ui() {
         done
     done < "$(realpath "${BASH_SOURCE[0]}")"
 }
+init::options() {
+    declare -gA OPTIONS=()
+    declare -ga ARGS=()
+
+    while (($# > 0)); do
+        case "$1" in
+            -u | --user)
+                [[ -n ${2:-} ]] || {
+                    printf "缺少 --user 参数。\n" >&2
+                    exit 1
+                }
+                OPTIONS[user]="$2"
+                shift 2
+                ;;
+            --user=*)
+                OPTIONS[user]="${1#*=}"
+                [[ -n ${OPTIONS[user]} ]] || {
+                    printf "缺少 --user 参数。\n" >&2
+                    exit 1
+                }
+                shift
+                ;;
+            *)
+                ARGS+=("$1")
+                shift
+                ;;
+        esac
+    done
+}
 
 tool::md5() {
     local raw=$(printf "%s" "$1" | md5sum)
@@ -61,7 +90,8 @@ tool::md5() {
 }
 
 cmd::key() {
-    local -a files=(/data/user/*/com.tencent.mobileqq/files/uid/*)
+    # shellcheck disable=SC2206
+    local -a files=(/data/user/${OPTIONS[user]:-*}/com.tencent.mobileqq/files/uid/*)
     local _uid_path
     for _uid_path in "${files[@]}"; do
         [[ -e $_uid_path ]] || continue
@@ -100,7 +130,7 @@ cmd::db() {
 
     while (($# > 0)); do
         case "$1" in
-            --output)
+            -o | --output)
                 [[ -n ${2:-} ]] || {
                     printf "缺少 --output 参数。\n" >&2
                     exit 1
@@ -174,24 +204,31 @@ SQL
 usage() {
     # shellcheck disable=SC2154
     cat << USAGE
-${b}QQ Dump — QQ NT 数据库解密工具${coff}
+${b}QQ Dump — QQ NT 数据库密钥获取与解密导出工具${coff}
 
-${title}用法:${coff}
-  ${SELF} key
-  ${SELF} db [--output <目录>] [文件...]
+Usage: ${SELF} [Options] <Command> [args]
 
-${title}运行环境:${coff}
-  仅支持 Android 环境，自动注入 Termux PATH。
-  非 root 运行时自动通过 su 提权。
-  工具依赖: jq sqlcipher
+${desc}仅支持 Android 环境，非 root 运行时自动通过 su 提权。
+自动注入 Termux PATH，工具依赖: jq sqlcipher
 
-${title}${SELF} key:${coff}
-  扫描设备上所有 QQ 账号，获取包含密钥的 JSON 到标准输出。
+https://github.com/miniyu157/qq-dump${coff}
 
-${title}${SELF} db:${coff}
-  --output <目录>    指定输出目录（默认: 当前目录）
-  [文件...]          要解密的数据库文件（默认: nt_msg.db profile_info.db）
-                     文件不存在时输出错误并跳过
+${title}Options:${coff}
+  -u, --user <用户ID>     指定 Android 的用户 ID
+                          有效值：0 及 ≥10 的次要用户 ID
+                          默认: 所有可用用户
+
+${title}Commands:${coff}
+  key                     扫描设备上所有 QQ 账号，输出密钥 JSON 到标准输出。
+  db                      解密 QQ 数据库文件，导出无加密的 .db 文件。
+
+  ${b}${SELF} [Options] key${coff}
+    无额外选项或参数。
+
+  ${b}${SELF} [Options] db [--output <DIR>] [FILES...]${coff}
+    -o, --output <DIR>    指定输出目录（默认: 当前目录）
+    [FILES...]            要解密的数据库文件（默认: nt_msg.db profile_info.db）
+                          若文件不存在则输出错误并跳过
 USAGE
     exit 1
 }
@@ -203,6 +240,9 @@ main() {
     init::global
     init::clean
     init::ui
+    init::options "$@"
+
+    set -- "${ARGS[@]}"
 
     local fn="cmd::${1}"
     if declare -f "$fn" > /dev/null 2>&1; then
