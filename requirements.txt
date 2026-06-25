@@ -1,0 +1,2 @@
+typer>=0.15
+blackboxprotobuf>=1.0.1

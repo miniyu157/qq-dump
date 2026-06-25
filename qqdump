@@ -33,9 +33,11 @@ check::sudo() {
     (($(id -u) != 0)) && exec su -c "$(printf "%q " "$shell" "$(readlink -f "$0")" "$@")"
 }
 
-# shellcheck disable=SC2329
 init::global() {
-    readonly SELF="${0##*/}"
+    readonly SELF_PATH=$(realpath "${BASH_SOURCE[0]}")
+    readonly SELF="${SELF_PATH##*/}"
+    SELF_DIR="${SELF_PATH%/*}"
+    readonly SELF_DIR="${SELF_DIR:-/}"
     declare -rag DEPS=(jq sqlcipher md5sum python3)
 }
 init::_clean() { rm -rf "$TMPDIR"; }
@@ -205,8 +207,28 @@ SQL
         done
 }
 
+tool::initpy() {
+    pushd "$SELF_DIR" &> /dev/null || return
+    if [[ ! -f ".venv/bin/activate" ]]; then
+        python3 -m venv .venv || {
+            printf "无法创建 Python 虚拟环境。\n" >&2
+            popd &> /dev/null || true
+            return 1
+        }
+    fi
+    # shellcheck disable=SC1091
+    source ".venv/bin/activate"
+
+    pip install -q -r requirements.txt
+
+    deactivate 2> /dev/null || true
+    popd &> /dev/null || return
+}
+
+## WIP
+## 仅仅初始化 python 环境
 cmd::chat() {
-    printf "chat 命令未实现。\n" >&2
+    tool::initpy
 }
 
 usage() {
@@ -223,9 +245,8 @@ https://github.com/miniyu157/qq-dump${coff}
 
 ${title}Options:${coff}
   -u, --user <用户ID>     指定 Android 的用户 ID
-                          有效值：0 及 ≥10 的次要用户 ID
+                          有效值: 0 及 ≥10 的次要用户 ID
                           默认: 所有可用用户
-
 ${title}Commands:${coff}
   key                     扫描设备上所有 QQ 账号，输出密钥 JSON 到标准输出。
   db                      解密 QQ 数据库文件，导出无加密的 .db 文件。
