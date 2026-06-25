@@ -15,16 +15,17 @@ check::android() {
         printf "非 Android 环境。\n" >&2
         exit 1
     }
+}
+init::deps() {
+    local -a missing=()
+    local dep
+    for dep in "${DEPS[@]}"; do
+        command -v "$dep" > /dev/null 2>&1 || missing+=("$dep")
+    done
+    ((${#missing[@]} == 0)) && return 0
 
-    command -v jq > /dev/null 2>&1 || {
-        printf "缺少 jq。\n" >&2
-        exit 1
-    }
-
-    command -v sqlcipher > /dev/null 2>&1 || {
-        printf "找不到 sqlcipher。\n" >&2
-        exit 1
-    }
+    printf "缺少依赖: %s\n" "${missing[*]}" >&2
+    exit 1
 }
 check::sudo() {
     # 确保在 Android Shell 中可以找到解释器
@@ -33,7 +34,10 @@ check::sudo() {
 }
 
 # shellcheck disable=SC2329
-init::global() { readonly SELF="${0##*/}"; }
+init::global() {
+    readonly SELF="${0##*/}"
+    declare -rag DEPS=(jq sqlcipher md5sum python3)
+}
 init::_clean() { rm -rf "$TMPDIR"; }
 init::clean() {
     TMPDIR=$(mktemp -d "/tmp/${SELF}.XXXXXX" 2> /dev/null) || TMPDIR=$(mktemp -d)
@@ -208,12 +212,12 @@ cmd::chat() {
 usage() {
     # shellcheck disable=SC2154
     cat << USAGE
-${b}QQ Dump — QQ NT 数据库密钥获取与解密导出工具${coff}
+${b}QQ Dump — NTQQ 数据库密钥提取、解密及聊天记录导出工具。${coff}
 
 Usage: ${SELF} [Options] <Command> [args]
 
 ${desc}仅支持 Android 环境，非 root 运行时自动通过 su 提权。
-自动注入 Termux PATH，工具依赖: jq sqlcipher
+自动注入 Termux PATH，工具依赖: ${DEPS[*]}
 
 https://github.com/miniyu157/qq-dump${coff}
 
@@ -242,9 +246,10 @@ main() {
     check::android
     check::sudo "$@"
 
-    init::global
-    init::clean
     init::ui
+    init::global
+    init::deps
+    init::clean
     init::options "$@"
 
     set -- "${ARGS[@]}"
