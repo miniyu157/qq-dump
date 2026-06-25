@@ -3,8 +3,6 @@ import sys
 try:
     from rich import print
     from rich.console import Console
-    from rich.progress import track
-    from rich.rule import Rule
 
     console = Console()
 except ImportError:

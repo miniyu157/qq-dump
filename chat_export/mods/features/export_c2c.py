@@ -96,7 +96,6 @@ def map_protobuf_keys(data):
 
 def run(args):
     db_msg = os.path.join(args.input, dbsma.DB_MSG)
-    db_profile = os.path.join(args.input, dbsma.DB_PROFILE)
 
     output_file_path = os.path.join(args.output, "parsed_messages.txt")
     conn = None
