@@ -201,6 +201,10 @@ SQL
         done
 }
 
+cmd::chat() {
+    printf "chat 命令未实现。\n" >&2
+}
+
 usage() {
     # shellcheck disable=SC2154
     cat << USAGE
@@ -221,6 +225,7 @@ ${title}Options:${coff}
 ${title}Commands:${coff}
   key                     扫描设备上所有 QQ 账号，输出密钥 JSON 到标准输出。
   db                      解密 QQ 数据库文件，导出无加密的 .db 文件。
+  chat                    从 QQ 数据库文件中导出可读的聊天记录。
 
   ${b}${SELF} [Options] key${coff}
     无额外选项或参数。
