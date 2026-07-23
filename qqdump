@@ -3,84 +3,48 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2155
 
-# @ui b=1m hl=36m title=1;3;4m desc=2m
-# @ui coff=0m
-# @off
+app::escalate() {
+    (($(id -u) != 0)) && {
+        [[ -f /system/build.prop ]] || app::die "${_err}×${_off} 当前非 Android 环境，你可以准备模拟环境，使用以下几种方式运行程序:\n${_ok}>${_off} ${_hl}$0 mock ${SCRIPT_ARGV[*]}${_off}\n${_ok}>${_off} ${_hl}$0 mock${_off}\n"
 
-check::android() {
-    [[ -d /data/data/com.termux/files/usr/bin ]] &&
-        export PATH="/data/data/com.termux/files/usr/bin:$PATH"
-
-    [[ -f /system/build.prop ]] || {
-        printf "非 Android 环境。\n" >&2
-        exit 1
+        exec su --mount-master -c "$(printf "%q " env -i PATH=/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin HOME=/data/data/com.termux/files/home/.suroot TERM="$TERM" LD_PRELOAD="/data/data/com.termux/files/usr/lib/libtermux-exec-ld-preload.so" "$(command -v bash || printf "%s" "/data/data/com.termux/files/usr/bin/bash")" "$(readlink -f "$0")" "${SCRIPT_ARGV[@]}")"
     }
 }
-init::deps() {
-    local -a missing=()
-    local dep
-    for dep in "${DEPS[@]}"; do
-        command -v "$dep" > /dev/null 2>&1 || missing+=("$dep")
-    done
-    ((${#missing[@]} == 0)) && return 0
 
-    printf "缺少依赖: %s\n" "${missing[*]}" >&2
+app::die() {
+    # shellcheck disable=SC2059
+    printf -- "$@" >&2
     exit 1
 }
-check::sudo() {
-    # 确保在 Android Shell 中可以找到解释器
-    local shell=$(command -v bash || printf "%s" "/data/data/com.termux/files/usr/bin/bash")
-    (($(id -u) != 0)) && exec su -c "$(printf "%q " "$shell" "$(readlink -f "$0")" "$@")"
-}
 
-init::global() {
-    readonly SELF_PATH=$(realpath "${BASH_SOURCE[0]}")
-    readonly SELF="${SELF_PATH##*/}"
-    SELF_DIR="${SELF_PATH%/*}"
-    readonly SELF_DIR="${SELF_DIR:-/}"
-    declare -rag DEPS=(jq sqlcipher md5sum python3)
-}
-init::_clean() { rm -rf "$TMPDIR"; }
-init::clean() {
-    TMPDIR=$(mktemp -d "/tmp/${SELF}.XXXXXX" 2> /dev/null) || TMPDIR=$(mktemp -d)
-    trap init::_clean EXIT HUP INT QUIT TERM
-}
-init::ui() {
-    local line pair key val ansi_header=$'\e[' color_on=1
-    [[ ! -t 1 && -z ${FORCE_COLOR:-} ]] && color_on=0
-    while read -r line; do
-        [[ $line == "# @off"* ]] && return
-        [[ $line == "# @ui "* ]] && for pair in ${line#\# @ui }; do
-            key="${pair%%=*}" val="${pair#*=}"
-            if ((color_on)); then
-                declare -g "${key}=${ansi_header}${val}"
-            else
-                declare -g "${key}="
-            fi
-        done
-    done < "$(realpath "${BASH_SOURCE[0]}")"
-}
 init::options() {
     declare -gA OPTIONS=()
     declare -ga ARGS=()
 
+    OPTIONS[output]="$PWD"
+
     while (($# > 0)); do
         case "$1" in
-            -u | --user)
-                [[ -n ${2:-} ]] || {
-                    printf "缺少 --user 参数。\n" >&2
-                    exit 1
-                }
-                OPTIONS[user]="$2"
-                shift 2
+            -u | --user | --user=*)
+                if [[ $1 == --user=* ]]; then
+                    OPTIONS[user]="${1#*=}"
+                    shift
+                else
+                    OPTIONS[user]="${2:-}"
+                    shift 2
+                fi
+                [[ -n ${OPTIONS[user]} ]] || app::die "${_err}×${_off} 缺少 --user 参数。\n"
                 ;;
-            --user=*)
-                OPTIONS[user]="${1#*=}"
-                [[ -n ${OPTIONS[user]} ]] || {
-                    printf "缺少 --user 参数。\n" >&2
-                    exit 1
-                }
-                shift
+            -o | --output | --output=*)
+                if [[ $1 == --output=* ]]; then
+                    OPTIONS[output]="${1#*=}"
+                    shift
+                else
+                    OPTIONS[output]="${2:-}"
+                    shift 2
+                fi
+                [[ -n ${OPTIONS[output]} ]] || app::die "${_err}×${_off} 缺少 --output 参数。\n"
+                [[ ${OPTIONS[output]} != /* ]] && OPTIONS[output]="$PWD/${OPTIONS[output]}"
                 ;;
             *)
                 ARGS+=("$1")
@@ -90,12 +54,14 @@ init::options() {
     done
 }
 
-tool::md5() {
+pure::md5() {
     local raw=$(printf "%s" "$1" | md5sum)
     printf "%s" "${raw%% *}"
 }
 
 cmd::key() {
+    app::escalate
+
     # shellcheck disable=SC2206
     local -a files=(/data/user/${OPTIONS[user]:-*}/com.tencent.mobileqq/files/uid/*)
     local _uid_path
@@ -107,14 +73,14 @@ cmd::key() {
         local _qqanduid="${_uid_path##*/}"
         local qq="${_qqanduid%%###*}"
         local uid="${_qqanduid##*###}"
-        local uid_hash=$(tool::md5 "$uid")
-        local path_hash=$(tool::md5 "${uid_hash}nt_kernel")
+        local uid_hash=$(pure::md5 "$uid")
+        local path_hash=$(pure::md5 "${uid_hash}nt_kernel")
         local db_dir="${qq_path}/databases/nt_db/nt_qq_${path_hash}"
         local rand=$(strings "${db_dir}/profile_info.db" |
             grep -A 1 'QQ_NT DB' |
             tail -n 1 |
             grep -oE '[a-zA-Z0-9]{8}')
-        local key=$(tool::md5 "$uid_hash$rand")
+        local key=$(pure::md5 "$uid_hash$rand")
 
         jq -n \
             --arg qq_path "$qq_path" \
@@ -131,40 +97,11 @@ cmd::key() {
 }
 
 cmd::db() {
-    local output_dir="$PWD"
-    local -a db_files=()
+    app::escalate
 
-    while (($# > 0)); do
-        case "$1" in
-            -o | --output)
-                [[ -n ${2:-} ]] || {
-                    printf "缺少 --output 参数。\n" >&2
-                    exit 1
-                }
-                output_dir="$2"
-                shift 2
-                ;;
-            --output=*)
-                output_dir="${1#*=}"
-                [[ -n $output_dir ]] || {
-                    printf "缺少 --output 参数。\n" >&2
-                    exit 1
-                }
-                shift
-                ;;
-            -*)
-                printf "未知选项: %s\n" "$1" >&2
-                exit 1
-                ;;
-            *)
-                db_files+=("$1")
-                shift
-                ;;
-        esac
-    done
+    local -a db_files=("$@")
 
-    [[ $output_dir != /* ]] && output_dir="$PWD/$output_dir"
-    mkdir -p "$output_dir"
+    mkdir -p "${OPTIONS[output]}"
 
     ((${#db_files[@]} == 0)) && db_files=("nt_msg.db" "profile_info.db")
 
@@ -183,7 +120,7 @@ cmd::db() {
                 fi
 
                 local _out_db_name="${prefix}${db}"
-                local out_db_path="${output_dir}/${_out_db_name}"
+                local out_db_path="${OPTIONS[output]}/${_out_db_name}"
                 local out_db_tmp_path="${TMPDIR}/${_out_db_name}"
 
                 dd if="$db_path" of="$out_db_tmp_path" bs=1024 skip=1 2> /dev/null
@@ -207,7 +144,32 @@ SQL
         done
 }
 
-tool::initpy() {
+cmd::mock() {
+    [[ -z ${QQDUMP_MOCK:-} ]] || app::die "${_err}×${_off} 已在模拟环境中，无需再次进入。\n"
+    export QQDUMP_MOCK=1
+
+    local -a sub_argv=()
+    local found=0
+    for arg in "${SCRIPT_ARGV[@]}"; do
+        if ((found)); then
+            sub_argv+=("$arg")
+        elif [[ $arg == mock ]]; then
+            found=1
+        fi
+    done
+
+    if ((${#sub_argv[@]} == 0)); then
+        printf "%b" "${_ok}>${_off} 进入模拟环境 Shell (proot)\n"
+        exec ./mock
+    else
+        exec ./mock "$(readlink -f "$0")" "${sub_argv[@]}"
+    fi
+}
+
+cmd::chat() {
+    local SELF_DIR=$(realpath "${BASH_SOURCE[0]}")
+    SELF_DIR="${SELF_DIR%/*}"
+    SELF_DIR="${SELF_DIR:-/}"
     pushd "$SELF_DIR" &> /dev/null || return
     if [[ ! -f ".venv/bin/activate" ]]; then
         python3 -m venv .venv || {
@@ -225,62 +187,57 @@ tool::initpy() {
     popd &> /dev/null || return
 }
 
-## WIP
-## 仅仅初始化 python 环境
-cmd::chat() {
-    tool::initpy
-}
-
-usage() {
-    # shellcheck disable=SC2154
+cmd::help() {
     cat << USAGE
-${b}QQ Dump — NTQQ 数据库密钥提取、解密及聊天记录导出工具。${coff}
+${_b}${0##*/} -- NTQQ 数据库密钥提取、解密及聊天记录导出工具。${_off}
 
-Usage: ${SELF} [Options] <Command> [args]
+${_desc}仅支持 Android 环境，非 root 运行时自动通过 su 提权。
+自动注入 Termux PATH，工具依赖: ${DEPS[*]}${_off}
+${_hl}✦ https://github.com/miniyu157/qq-dump ✦${_off}
 
-${desc}仅支持 Android 环境，非 root 运行时自动通过 su 提权。
-自动注入 Termux PATH，工具依赖: ${DEPS[*]}
+${_title}Usage: ${0##*/} [Options] <Command> [args]${_off}
 
-https://github.com/miniyu157/qq-dump${coff}
+${_title}Options:${_off}
+  -u, --user <用户ID>     指定 Android 的用户 ID（默认: 所有用户）
+  -o, --output <DIR>      指定输出目录（默认: 当前目录）
 
-${title}Options:${coff}
-  -u, --user <用户ID>     指定 Android 的用户 ID
-                          有效值: 0 及 ≥10 的次要用户 ID
-                          默认: 所有可用用户
-${title}Commands:${coff}
+${_title}Commands（QQ 数据库）:${_off}
   key                     扫描设备上所有 QQ 账号，输出密钥 JSON 到标准输出。
-  db                      解密 QQ 数据库文件，导出无加密的 .db 文件。
+  db [FILES...]           解密 QQ 数据库文件，导出无加密的 .db 文件。
+                          默认: nt_msg.db profile_info.db，文件不存在则跳过
   chat                    从 QQ 数据库文件中导出可读的聊天记录。
 
-  ${b}${SELF} [Options] key${coff}
-    无额外选项或参数。
-
-  ${b}${SELF} [Options] db [--output <DIR>] [FILES...]${coff}
-    -o, --output <DIR>    指定输出目录（默认: 当前目录）
-    [FILES...]            要解密的数据库文件（默认: nt_msg.db profile_info.db）
-                          若文件不存在则输出错误并跳过
+${_title}Commands（调试工具）:${_off}
+  mock <command...>       通过 proot 模拟 Android 环境运行子命令。
+  help                    ${_desc}显示此帮助信息。${_off}
 USAGE
     exit 1
 }
 
-main() {
-    check::android
-    check::sudo "$@"
+[[ ${BASH_SOURCE[0]} == "${0}" ]] && {
+    # 设置颜色
+    [[ -t 1 || -n ${FORCE_COLOR:-} ]] && declare -g _b=$'\e[1m' _hl=$'\e[38;2;255;174;193m' _title=$'\e[1;3;4m' _off=$'\e[0m' _ok=$'\e[38;2;101;255;101m' _err=$'\e[1;38;2;108;5;0;48;2;255;115;108m' _desc=$'\e[2m'
 
-    init::ui
-    init::global
-    init::deps
-    init::clean
+    # 检查依赖，缺少则报错退出
+    declare -rag DEPS=(jq sqlcipher md5sum python3)
+    missing=$(
+        for dep in "${DEPS[@]}"; do
+            command -v "$dep" > /dev/null 2>&1 || printf '%s\n' "$dep"
+        done | paste -sd ' ' -
+    )
+    [[ -z $missing ]] || app::die "${_err}×${_off} 缺少依赖：${_hl}${missing}${_off}\n"
+
+    # 设置清理钩子
+    TMPDIR=$(mktemp -d "/tmp/${0##*/}.XXXXXX" 2> /dev/null) || TMPDIR=$(mktemp -d)
+    trap 'rm -rf "$TMPDIR"' EXIT HUP INT QUIT TERM
+
+    # 解析参数
+    SCRIPT_ARGV=("$@")
     init::options "$@"
-
     set -- "${ARGS[@]}"
 
-    local fn="cmd::${1}"
-    if declare -f "$fn" > /dev/null 2>&1; then
-        "$fn" "${@:2}"
-    else
-        usage
-    fi
+    # 命令分发
+    [[ -n $1 ]] || app::die "${_err}×${_off} 缺少命令。\n${_ok}>${_off} 运行 '${_hl}${0##*/} help${_off}' 查看用法。\n"
+    declare -f "cmd::${1:-}" > /dev/null 2>&1 || app::die "${_err}×${_off} 未知命令：$1\n${_ok}>${_off} 运行 '${_hl}${0##*/} help${_off}' 查看用法。\n"
+    "cmd::${1:-}" "${@:2}"
 }
-
-[[ ${BASH_SOURCE[0]} == "${0}" ]] && main "$@"
