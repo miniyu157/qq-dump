@@ -1,3 +1,5 @@
+*.db
+
 *.bak
 *.lock
 *.pid
