@@ -1,10 +1,10 @@
 # QQ DUMP
 
-QQNT 数据库转储、消息导出、好友查询、WebUI，以及专为逆向与开发设计的数据库 Protobuf 研究套件 (Table2D)。
+全方位友好的 QQNT 数据库转储、消息导出、好友查询、WebUI，以及专为逆向与开发设计的数据库 Protobuf 研究分析套件。
 
 ---
 
-**我把 main 分支重写了:**
+**main 分支重写了:**
 
 项目已重写历史记录，包含旧提交的分支在 [dbtools](https://github.com/miniyu157/qq-dump/tree/feat/dbtools) 仍可查看。
 
