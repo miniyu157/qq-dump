@@ -2,13 +2,13 @@
 
 全方位友好的 QQNT 数据库转储、消息导出、好友查询、WebUI，以及专为逆向与开发设计的数据库 Protobuf 研究分析套件。
 
+
+> [!NOTE]
+> **main 分支重写了:**  
+> 主分支已重写历史记录，包含旧提交的分支在 [dbtools](https://github.com/miniyu157/qq-dump/tree/feat/dbtools) 仍可查看。  
+> 保留了 legacy 项目 [QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt) 的完整消息导出代码，已适配此项目架构。
+
 ---
-
-**main 分支重写了:**
-
-项目已重写历史记录，包含旧提交的分支在 [dbtools](https://github.com/miniyu157/qq-dump/tree/feat/dbtools) 仍可查看。
-
-项目保留了 legacy 项目 [QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt) 的完整消息导出代码，已适配此项目架构。
 
 项目已全面升级到 Python，按需使用依赖:
 
@@ -26,24 +26,28 @@
 
 ## 开始
 
-首先补齐必要的二进制依赖: python git
+1. 补齐必要的二进制依赖
 
-1. 下载仓库
+```plaintext
+python git
+```
+
+2. 下载仓库
 
 ```bash
 git clone https://github.com/miniyu157/qq-dump.git
 ```
 
-1. 运行
+3. 运行
 
 ```bash
 ./qqdump
 ```
 
 
-> 此文档编辑于: 2026-10-25
-> 即将完善……
-> 即将添加截图和更多用法说明……
+> 此文档编辑于: 2026-10-25  
+> 即将完善……  
+> 即将添加截图和更多用法说明……  
 
 ---
 
