@@ -17,7 +17,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""
-QQNT DUMP CHAT
+QQNT DUMP CHAT (Legacy)
 
 Github: https://github.com/miniyu157/qq-dump
 """,
@@ -42,7 +42,7 @@ def clear_screen():
 
 
 def print_menu(args):
-    print("QQNT DUMP CHAT\n")
+    print("QQNT DUMP CHAT (Legacy)\n")
     print("Github: https://github.com/miniyu157/qq-dump\n")
     print(f"资料库: {args.profile_info_db}")
     print(f"消息库: {args.nt_msg_db}")

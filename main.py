@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 from typing import NoReturn
 
-from lib.ansi import _bold, _faint, _good, _hl, _info, _reset, _tty, _warn
+from lib.ansi import _bold, _err, _faint, _good, _hl, _info, _reset, _tty, _warn
 from lib.utils import check_binary_deps, check_python_deps, info_log, warn_log
 from render.data import render_json
 from render.tui import choose
@@ -19,13 +19,6 @@ VERSION = "0.1.1"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CLI_DIR = SCRIPT_DIR / "cli"
-
-DEPENDENCIES = (
-    ("python", True, "你需要使用 Python 运行这个项目"),
-    ("sudo", False, "自提权时需要"),
-    ("sqlcipher", False, "解密数据库时需要"),
-    ("chafa", False, "运行 avatar --chafa 时需要"),
-)
 
 
 class AppError(Exception):
@@ -87,7 +80,7 @@ def _qq_data_error(target: Path) -> NoReturn:
     """输出 QQ 数据目录缺失的错误与根目录提示，并退出。"""
     print(file=sys.stderr)
     warn_log(f"QQ 数据目录不存在: {target}")
-    info_log(f"TIP: 或许可以使用 {_hl}--root-dir{_reset} 手动设置根目录")
+    info_log(f"或许可以使用 {_hl}--root-dir{_reset} 手动设置根目录")
     sys.exit(1)
 
 
@@ -234,7 +227,7 @@ def select_account(args: argparse.Namespace, *, as_root: bool) -> dict[str, obje
         and (not args.qq or args.qq in (account["uin"], account["uid"]))
     ]
     if not accounts:
-        print(f"{_info}未找到可选的账号{_reset}", file=sys.stderr)
+        warn_log("未找到可选的账号")
         sys.exit(1)
 
     options = [f"{account['user']}.{account['uin']}" for account in accounts]
@@ -306,7 +299,12 @@ def cmd_check(args: argparse.Namespace) -> None:
     print(file=sys.stderr)
     results = [
         (name, required, purpose, shutil.which(name) is not None)
-        for name, required, purpose in DEPENDENCIES
+        for name, required, purpose in (
+            ("python", True, "你需要使用 Python 运行这个程序"),
+            ("sudo", False, "自提权时需要"),
+            ("sqlcipher", False, "解密数据库时需要"),
+            ("chafa", False, "运行 avatar --chafa 时需要"),
+        )
     ]
     for index, (required, label) in enumerate(((True, "必选"), (False, "可选"))):
         if index:
@@ -316,8 +314,11 @@ def cmd_check(args: argparse.Namespace) -> None:
             if is_required != required:
                 continue
             status = "已找到" if found else "未找到"
-            color = _good if found else _warn
-            print(f"{_good}●{_reset} {color}{status}{_reset}: {name} {_faint}({purpose}){_reset}", file=sys.stderr)
+            if found:
+                color = _good
+            else:
+                color = _err if is_required else _warn
+            print(f"{color}● {status}{_reset} {name} {_faint}({purpose}){_reset}", file=sys.stderr)
     missing = sum(not found for _, _, _, found in results)
     print(f"\n共计: {len(results)} 项, 缺失: {missing} 项", file=sys.stderr)
     if any(required and not found for _, required, _, found in results):

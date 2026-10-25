@@ -11,17 +11,14 @@ __all__ = ["check_binary_deps", "check_python_deps", "good_log", "info_log", "wa
 
 
 def info_log(message: str, file=sys.stderr) -> None:
-    """输出带蓝色 i 前缀的信息。"""
     print(f"{_blue}i{_reset} {message}", file=file)
 
 
 def warn_log(message: str, file=sys.stderr) -> None:
-    """输出带黄色 × 前缀的警告。"""
     print(f"{_warn}× {message}{_reset}", file=file)
 
 
 def good_log(message: str, file=sys.stderr) -> None:
-    """输出带绿色 ● 前缀的成功信息。"""
     print(f"{_good}●{_reset} {message}{_reset}", file=file)
 
 
