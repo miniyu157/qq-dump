@@ -3,21 +3,29 @@ import argparse
 import atexit
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from typing import NoReturn
 
-from lib.ansi import _bold, _faint, _hl, _info, _reset, _tty
+from lib.ansi import _bold, _faint, _good, _hl, _info, _reset, _tty, _warn
 from lib.utils import check_binary_deps, check_python_deps, info_log, warn_log
 from render.data import render_json
 from render.tui import choose
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CLI_DIR = SCRIPT_DIR / "cli"
+
+DEPENDENCIES = (
+    ("python", True, "你需要使用 Python 运行这个项目"),
+    ("sudo", False, "自提权时需要"),
+    ("sqlcipher", False, "解密数据库时需要"),
+    ("chafa", False, "运行 avatar --chafa 时需要"),
+)
 
 
 class AppError(Exception):
@@ -230,10 +238,9 @@ def select_account(args: argparse.Namespace, *, as_root: bool) -> dict[str, obje
         sys.exit(1)
 
     options = [f"{account['user']}.{account['uin']}" for account in accounts]
-    print(file=sys.stderr)
-    print(f"{_info}请选择账号:{_reset}", file=sys.stderr)
+    title = f"\n{_info}请选择账号:{_reset}"
     try:
-        choice = choose(options)
+        choice = choose(options, title=title)
     except (EOFError, ValueError):
         sys.exit("未选择账号")
     return accounts[choice]
@@ -253,7 +260,6 @@ def complete_databases(args: argparse.Namespace, databases: list[tuple[str, str]
     missing = [(attr, name) for attr, name in databases if getattr(args, attr) is None]
     if not missing:
         return
-    check_binary_deps("数据库解密需要以下二进制依赖: ", ["sqlcipher"], log=warn_log)
     names = [name for _, name in missing]
 
     # 临时数据库优先放在 tmpfs，创建失败时退回系统临时目录
@@ -267,6 +273,7 @@ def complete_databases(args: argparse.Namespace, databases: list[tuple[str, str]
     print(f"需要数据库: {missing_text}\n将解密到临时目录以使用: {_hl}{temp_dir.name}{_reset}\n运行 {_hl}help{_reset} 命令以了解如何手动选择", file=sys.stderr)
 
     require_qq_data(args)
+    check_binary_deps("数据库解密需要以下二进制依赖: ", ["sqlcipher"], log=warn_log)
     as_root = not qq_data_accessible(args)
 
     account = select_account(args, as_root=as_root)
@@ -293,8 +300,52 @@ def cmd_legacy(args: argparse.Namespace) -> None:
     raise SystemExit(proc.returncode)
 
 
+def cmd_check(args: argparse.Namespace) -> None:
+    """检查运行时依赖，按必选与可选列出结果。"""
+    print(f"{_bold}QQ DUMP 依赖检查{_reset}", file=sys.stderr)
+    print(file=sys.stderr)
+    results = [
+        (name, required, purpose, shutil.which(name) is not None)
+        for name, required, purpose in DEPENDENCIES
+    ]
+    for index, (required, label) in enumerate(((True, "必选"), (False, "可选"))):
+        if index:
+            print(file=sys.stderr)
+        print(f"{_bold}{label}依赖{_reset}", file=sys.stderr)
+        for name, is_required, purpose, found in results:
+            if is_required != required:
+                continue
+            status = "已找到" if found else "未找到"
+            color = _good if found else _warn
+            print(f"{_good}●{_reset} {color}{status}{_reset}: {name} {_faint}({purpose}){_reset}", file=sys.stderr)
+    missing = sum(not found for _, _, _, found in results)
+    print(f"\n共计: {len(results)} 项, 缺失: {missing} 项", file=sys.stderr)
+    if any(required and not found for _, required, _, found in results):
+        sys.exit(1)
+
+
 def cmd_help(args: argparse.Namespace) -> None:
     sys.stdout.write(help_text())
+
+
+def cmd_menu(args: argparse.Namespace) -> None:
+    """无子命令时显示主菜单。"""
+    title = (
+        f"{_bold}QQ DUMP TUI v{VERSION}{_reset}\n"
+        f"{_hl}https://github.com/miniyu157/qq-dump{_reset}\n\n"
+        f"{_info}今天想要做些什么?{_reset}"
+    )
+    menu = (
+        (f"运行 WebUI 服务器 {_faint}(需要数据库文件){_reset}", cmd_web),
+        (f"运行 Legacy 消息导出 {_faint}(需要数据库文件){_reset}", cmd_legacy),
+        ("查看 CLI 帮助", cmd_help),
+        ("运行依赖检查", cmd_check),
+    )
+    try:
+        choice = choose([label for label, _ in menu], title=title)
+    except (EOFError, ValueError):
+        sys.exit("未选择操作")
+    menu[choice][1](args)
 
 
 def help_text() -> str:
@@ -306,7 +357,7 @@ def help_text() -> str:
 
   {_faint}tip: 数据库文件参数 (如 -p/-n) 被需要且未指定时，
   会显示账号选择界面，并即时解密补齐。
-  未指定子命令时等同于 web。{_reset}
+  未指定子命令时显示菜单。{_reset}
 
 {_title}用法:{_reset}
   {_bold}{prog}{_reset} [选项] [<子命令>] [命令选项] [参数]
@@ -325,6 +376,8 @@ def help_text() -> str:
   {_cmd_a}db{_reset} [-u] [-a] [-r] [-o] [-f] [files...] 为选定用户解密数据库文件
     {_bold}-f, --name-format <模版>{_reset}       输出文件名模版，斜杠表示目录层
                                    {_faint}(默认: {{user}}.{{uin}}/{{filename}}){_reset}
+
+  {_cmd_a}check{_reset}                            检查运行时依赖
 
   {_cmd_a}web{_reset} [-p]                         启动本地 WebUI
 
@@ -365,8 +418,8 @@ def main() -> None:
     common.add_argument("-v", "--version", action="version", version=f"v{VERSION}")
 
     parser = HelpParser(parents=[common])
-    # 未指定子命令时直接启动 WebUI
-    parser.set_defaults(func=cmd_web)
+    # 未指定子命令时显示菜单
+    parser.set_defaults(func=cmd_menu)
     sub = parser.add_subparsers(dest="command", parser_class=HelpParser)
     sub.add_parser("key", parents=[common]).set_defaults(func=cmd_key)
     db_parser = sub.add_parser("db", parents=[common])
@@ -374,6 +427,7 @@ def main() -> None:
     db_parser.add_argument("-f", "--name-format", default="{user}.{uin}/{filename}")
     db_parser.set_defaults(func=cmd_db)
 
+    sub.add_parser("check", parents=[common]).set_defaults(func=cmd_check)
     sub.add_parser("web", parents=[common]).set_defaults(func=cmd_web)
     sub.add_parser("friends", parents=[common]).set_defaults(func=cmd_friends)
     sub.add_parser("owner", parents=[common]).set_defaults(func=cmd_owner)

@@ -2,8 +2,10 @@
 
 import errno
 import json
+import shutil
 import subprocess
 import sys
+import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -125,7 +127,7 @@ def create_server(profile_db: str, nt_db: str | None = None) -> ThreadingHTTPSer
 
 
 def serve(profile_db: str, nt_db: str | None = None) -> None:
-    """启动 WebUI 并阻塞到 Ctrl+C"""
+    """启动 WebUI，等待回车打开页面，阻塞到 Ctrl+C"""
     try:
         server = create_server(profile_db, nt_db)
     except OSError as exc:
@@ -139,13 +141,27 @@ def serve(profile_db: str, nt_db: str | None = None) -> None:
         print("\033[2J\033[H", end="", flush=True)
     print(f"{_bold}QQ DUMP WebUI{_reset}")
     good_log(url)
+
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
     try:
-        subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    except OSError:
-        pass
-    try:
-        server.serve_forever()
+        if sys.stdin.isatty():
+            print("按回车键使用 xdg-open 打开页面", file=sys.stderr, end="", flush=True)
+            try:
+                input()
+            except EOFError:
+                pass
+            else:
+                if shutil.which("xdg-open") is None:
+                    print("错误: 未找到 xdg-open", file=sys.stderr)
+                else:
+                    try:
+                        subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                    except OSError:
+                        pass
+        server_thread.join()
     except KeyboardInterrupt:
         pass
     finally:
+        server.shutdown()
         server.server_close()
