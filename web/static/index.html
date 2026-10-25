@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f0e8">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#131210">
+<title>QQ DUMP WebUI</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="appbar">
+  <div class="brand">
+    <h1>QQ DUMP <em>WebUI</em></h1>
+    <p class="summary" id="summary">正在加载用户数据...</p>
+  </div>
+  <div class="owner" id="owner">
+    <div class="owner-text">
+      <span class="owner-name" id="owner-name"></span>
+      <span class="owner-signature" id="owner-signature"></span>
+    </div>
+    <span class="owner-avatar" id="owner-avatar"></span>
+  </div>
+</header>
+
+<main>
+  <section class="controls" aria-label="筛选与排序">
+    <div class="toolbar">
+      <div class="search-row">
+        <input id="search" class="search-input" type="search" placeholder="搜索任意字段或值" aria-label="搜索" autocomplete="off" enterkeyhint="search">
+      </div>
+
+      <div class="filters">
+        <div class="axis">
+          <span class="label">分组</span>
+          <div class="options" id="group-options" role="group" aria-label="分组"></div>
+        </div>
+        <div class="axis">
+          <span class="label">关系</span>
+          <div class="options" id="status-chips" role="group" aria-label="好友关系">
+            <button class="option" type="button" data-status="all" aria-pressed="true">全部</button>
+            <button class="option" type="button" data-status="friend" aria-pressed="false">好友</button>
+            <button class="option" type="button" data-status="nonfriend" aria-pressed="false">非好友</button>
+          </div>
+        </div>
+        <div class="axis">
+          <span class="label">类型</span>
+          <div class="options" id="kind-chips" role="group" aria-label="账号类型">
+            <button class="option" type="button" data-kind="all" aria-pressed="true">全部</button>
+            <button class="option" type="button" data-kind="bot" aria-pressed="false">机器人</button>
+            <button class="option" type="button" data-kind="human" aria-pressed="false">非机器人</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="toolbar-actions">
+        <button class="text-button" id="select-visible" type="button" disabled>全选可见</button>
+        <button class="text-button" id="clear" type="button">清除选择</button>
+        <button class="text-button" id="sort-toggle" type="button" aria-expanded="false" aria-label="排序规则">排序<span class="badge" id="sort-badge"></span></button>
+      </div>
+    </div>
+
+    <div class="sort-panel" id="sort-panel" hidden>
+      <div class="sort-head">
+        <span class="label">排序规则 · 自上而下优先</span>
+        <button class="text-button" id="add-rule" type="button">+ 添加规则</button>
+      </div>
+      <div class="sort-rules" id="sort-rules"></div>
+    </div>
+  </section>
+
+  <section class="list-region" aria-label="用户列表">
+    <div class="list-head">
+      <span class="count" id="visible-count"></span>
+      <div class="view-switch" id="view-switch" role="group" aria-label="列表视图">
+        <button class="option" type="button" data-view="comfort" aria-pressed="true">标准</button>
+        <button class="option" type="button" data-view="compact" aria-pressed="false">密集</button>
+      </div>
+    </div>
+    <div class="list" id="cards" aria-live="polite"></div>
+  </section>
+</main>
+
+<footer class="actionbar">
+  <span id="selected-count">已选 0</span>
+  <div class="actions">
+    <button class="text-button" id="copy" type="button" disabled>复制 UID</button>
+    <button class="primary" id="next" type="button" disabled>下一步</button>
+  </div>
+</footer>
+<p class="toast" id="toast" role="status" hidden></p>
+<script src="app.js"></script>
+</body>
+</html>
