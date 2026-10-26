@@ -15,7 +15,7 @@ from lib.utils import check_binary_deps, check_python_deps, info_log, warn_log
 from render.data import render_json
 from render.tui import choose
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CLI_DIR = SCRIPT_DIR / "cli"
