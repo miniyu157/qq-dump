@@ -17,6 +17,7 @@ import sqlite3
 import sys
 from collections import Counter
 from datetime import datetime
+from typing import NamedTuple
 
 import scan
 from count_by import ValueFormat, build_entries, render_count_by, resolve_options, validate_columns
@@ -26,6 +27,12 @@ from node import as_node, node_paths, prune, without_hex
 from render import join_values, render_count, render_progress, render_rows, render_rule, render_small_table, render_summary, render_tables, render_values, row_marker, status_row_styles
 
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_]+$")
+
+# 过滤条件：列名后跟比较运算符，值可以再含等号等字符
+CONDITION = re.compile(r"^([A-Za-z0-9_]+)(!=|>=|<=|=|>|<)(.*)$")
+
+# 需要数值右值、且列声明类型必须为数值的运算符
+NUMERIC_OPERATORS = frozenset({"!=", ">", "<", ">=", "<="})
 
 # 查询自己生成的列：原表次序序号、输入次序序号、限定集序号，都不属于表，取表头时排除
 COMPUTED_COLUMNS = {"#", "o#", "s#"}
@@ -240,9 +247,30 @@ def defined_columns(conn, db_path, table):
     return sum(1 for column in columns if table_map and column in table_map.columns), len(columns)
 
 
-def column_is_blob(conn, table, column):
+def column_type(conn, table, column):
+    """列的声明类型；列不存在时返回 None"""
     row = conn.execute("SELECT type FROM pragma_table_info(?) WHERE name = ?", (table, column)).fetchone()
-    return bool(row and "BLOB" in (row[0] or "").upper())
+    return None if row is None else (row[0] or "").upper()
+
+
+def column_is_blob(conn, table, column):
+    kind = column_type(conn, table, column)
+    return kind is not None and "BLOB" in kind
+
+
+def numeric_affinity(kind):
+    """按 SQLite 亲和性判断数值列：声明类型非空且不含 TEXT/BLOB 关键字"""
+    return bool(kind) and not any(word in kind for word in ("CHAR", "CLOB", "TEXT", "BLOB"))
+
+
+def validate_conditions(conn, table, items, parser):
+    """过滤列必须存在；数值比较还要求列的声明类型为数值"""
+    for item in items:
+        kind = column_type(conn, table, item.column)
+        if kind is None:
+            parser.error(f"表中没有列: {item.column}")
+        if item.operator in NUMERIC_OPERATORS and not numeric_affinity(kind):
+            parser.error(f"列 {item.column} 的声明类型为 {kind or '未声明'}，不能用于数值比较")
 
 
 def defined_fields(db_path, table, census):
@@ -383,9 +411,17 @@ def reservoir_rows(conn, table, scope, count, rng):
     return picked
 
 
-def conditions(pairs):
-    """若干 (列名, 值) 编成同时成立的条件，以及按序绑定的参数"""
-    return " AND ".join(f"[{column}] = ?" for column, _ in pairs), [value for _, value in pairs]
+class Condition(NamedTuple):
+    """一条过滤条件；值已按运算符解析为文本或数字"""
+
+    column: str
+    operator: str
+    value: object
+
+
+def conditions(items):
+    """若干条件编成同时成立的 SQL 条件，以及按序绑定的参数"""
+    return " AND ".join(f"[{item.column}] {item.operator} ?" for item in items), [item.value for item in items]
 
 
 def ordering_keys(order):
@@ -403,7 +439,7 @@ def row_query(table, first, latest, where=(), span=(0, 0), scope=(), order=()):
     邻行按集合内的序号取，越过集合首尾由序号范围自然截断。
     显示的 # 始终是原表次序的序号，因此使用了 scope 或 order 就会跳号。
     where 是命中条件，span 为 (前若干行, 后若干行)，以命中行为锚一并取它的邻行。
-    列名由调用方保证只含标识符字符，值走参数绑定"""
+    列名与运算符由调用方保证来自固定集合，值走参数绑定"""
     if order:
         # 末尾补 rowid：并列行的先后不能交给 SQLite 决定，否则换了版本或查询计划就可能取到别的行
         numbered = f"SELECT ROW_NUMBER() OVER (ORDER BY rowid) AS [#], ROW_NUMBER() OVER (ORDER BY {ordering_keys(order)}, rowid) AS [o#], * FROM [{table}]"
@@ -414,7 +450,7 @@ def row_query(table, first, latest, where=(), span=(0, 0), scope=(), order=()):
     subset, scope_params = conditions(scope) if scope else ("1", [])
     # 限定集自带一套序号：有 scope 时是它选出的行，没有时就是整表。
     # 取开头、取末尾、命中与邻行都按这套序号算，输出仍带原表次序序号
-    ranked = f"""WITH [s] AS (
+    ranked = f"""WITH RECURSIVE [s] AS (
     SELECT [n].*, ROW_NUMBER() OVER (ORDER BY {position}) AS [s#] FROM ({numbered}) AS [n] WHERE {subset}
 )"""
 
@@ -438,17 +474,29 @@ def row_query(table, first, latest, where=(), span=(0, 0), scope=(), order=()):
         return f"SELECT * FROM ({numbered}) AS [n] WHERE {f'{subset} AND ' if scope else ''}{hits}", [*scope_params, *hit_params]
 
     before, after = span
-    query = f"""{ranked}, [hit] AS (SELECT [s#] FROM [s] WHERE {hits})
-SELECT * FROM [s] WHERE EXISTS (SELECT 1 FROM [hit] WHERE [s].[s#] BETWEEN [hit].[s#] - {before} AND [hit].[s#] + {after})"""
+    # 逐行 EXISTS 会按命中数乘上表行数；先把命中行展开成邻行序号，再一次性用 IN 筛选
+    query = f"""{ranked}, [hit] AS (SELECT [s#] FROM [s] WHERE {hits}),
+[o](n) AS (SELECT {-before} UNION ALL SELECT n + 1 FROM [o] WHERE n < {after})
+SELECT * FROM [s] WHERE [s#] IN (SELECT [hit].[s#] + [o].n FROM [hit], [o])"""
     return query, [*scope_params, *hit_params]
 
 
 def condition(raw):
-    """过滤条件写成 列名=值；值里可以再出现等号，只按首个等号切分"""
-    column, sep, value = raw.partition("=")
-    if not sep or not IDENTIFIER.match(column):
-        raise argparse.ArgumentTypeError(f"过滤条件应为 列名=值: {raw}")
-    return column, value
+    """过滤条件写成 列名运算符值；值里可以再出现等号，只按首个运算符切分"""
+    match = CONDITION.match(raw)
+    if not match:
+        raise argparse.ArgumentTypeError(f"过滤条件应为 列名运算符值: {raw}")
+    column, operator, text = match.groups()
+    if operator not in NUMERIC_OPERATORS:
+        return Condition(column, operator, text)
+    try:
+        value = int(text)
+    except ValueError:
+        try:
+            value = float(text)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"数值比较需要数字: {raw}") from None
+    return Condition(column, operator, value)
 
 
 def ordering(raw):
@@ -560,6 +608,9 @@ def help_text(prog):
   在用户信息贮藏缓存表中，统计性别分布
   {prog} profile_info.db profile_info_v6 --count-by 20014
 
+  在用户信息贮藏缓存表中，取 20001 非 0 非 null 且亲密度大于 1000 的行
+  {prog} profile_info.db profile_info_v6 --scope '20001!=0' --scope '20070>1000' --values -q
+
 {title}参数:{off}
   {bold}db{off}                                   SQLite 数据库文件
   {bold}table{off}                                表名，缺省时列出库中的表
@@ -570,11 +621,14 @@ def help_text(prog):
       {faint}未给出 -o 时，输出顺序不作保证{off}
 
 {title}选项 (选取范围; -f -l -w -r 互斥; -s/-w 可重复，条件按 AND 合并):{off}
-  {bold}-s, --scope <列名=值>{off}                限定候选集
+  {bold}-s, --scope <条件>{off}                   限定候选集
+      {faint}条件: 列名=值、列名!=值、列名>值、列名<值、列名>=值、列名<=值{off}
+      {faint}!=、>、<、>=、<= 仅限数值声明列; 含 <、> 的条件需加引号{off}
       {faint}-f/-l 在集合内计数，-w 的邻行不超出集合{off}
   {bold}-f, --first <N>{off}                      按输入次序只取开头 N 行
   {bold}-l, --latest <N>{off}                     按输入次序只取末尾 N 行
-  {bold}-w, --where <列名=值>{off}                命中条件，需全部满足，不比较 blob 列
+  {bold}-w, --where <条件>{off}                   命中条件，需全部满足，不比较 blob 列
+      {faint}数值命中行可配 -a/-b/-c 扩展{off}
   {bold}-r, --random <N>{off}                     从限定候选集随机选取 N 行
       {faint}与 -f/-l/-w 互斥; 搜索与 -F/-L 在采样之后执行{off}
       {faint}无放回; N 超过候选数时取全部{off}
@@ -661,10 +715,12 @@ def help_text(prog):
 {title}选项 (输出):{off}
   {bold}-n, --count{off}                          仅输出主表最终行数; 最高优先级
   {bold}--values{off}                             按显示列顺序逗号连接各列值; 优先于风格
-      {faint}未选择时按表列顺序使用所有可见列; 行首显示 # 行号{off}
+      {faint}未选择时按表列顺序使用所有可见列; 行号由 --row-number 控制{off}
       {faint}BLOB 遵守 --short-blob; 空 BLOB 为 (empty){off}
   {bold}--values-uniq{off}                        按完整原始值合并连续行; 行首显示 N x，不显示行号
       {faint}--values 与 --values-uniq 互斥; 未选择时同上{off}
+  {bold}--row-number{off}                          在 --values 与 count-by 附加信息行首显示 # 行号
+      {faint}默认不显示; 对 --values-uniq 与其它输出模式无效果{off}
   {bold}-j, --json{off}                           等价于 --style json
   {bold}-k, --kv{off}                             等价于 --style kv
   {bold}--style <2d|kv|json>{off}                 输出风格
@@ -739,6 +795,7 @@ def main():
     value_mode = parser.add_mutually_exclusive_group()
     value_mode.add_argument("--values", action="store_true")
     value_mode.add_argument("--values-uniq", action="store_true")
+    parser.add_argument("--row-number", action="store_true")
     parser.add_argument("--keep-groups", type=group_limit, action="append", metavar="列名=N")
     parser.add_argument("--nohex", action="store_true")
     parser.add_argument("--time-format", metavar="格式")
@@ -855,6 +912,8 @@ def main():
         render_tables(tables_of(conn, args.db))
         return
 
+    validate_conditions(conn, args.table, [*(args.scope or []), *(args.where or [])], parser)
+
     if args.auto_time:
         time_columns = detect_time_columns(conn, args.table)
 
@@ -942,7 +1001,7 @@ def main():
     if count_options is not None:
         entries = build_entries(records, count_options, table_map)
         value_format = ValueFormat(frozenset(time_columns), time_format, args.short_blob, args.max_depth)
-        render_count_by(entries, count_options, len(records), value_format)
+        render_count_by(entries, count_options, len(records), value_format, args.row_number)
         return
 
     # values 与 values-uniq 只输出选中列的值; 摘要仍按 --no-summary 控制
@@ -973,8 +1032,8 @@ def main():
             render_values(runs)
         else:
             for record in records:
-                marker = row_marker(record["#"])
-                print(f"{marker} {join_values(value_json(record[column], column, time_columns, time_format, args.short_blob, args.max_depth) for column in view_columns)}")
+                marker = f"{row_marker(record['#'])} " if args.row_number else ""
+                print(marker + join_values(value_json(record[column], column, time_columns, time_format, args.short_blob, args.max_depth) for column in view_columns))
         return
 
     # json 的行对象自己编：标量保留原生类型，blob 就地内嵌，不做显示用的字符串化与摘要

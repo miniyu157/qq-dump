@@ -40,16 +40,17 @@ class ValueFormat:
     max_depth: int
 
 
-def stat_info(records, display_columns, value_format):
-    """一个分组的附加信息: 每行原始行号与各展示列的值"""
+def stat_info(records, display_columns, value_format, row_number):
+    """一个分组的附加信息: 每行各展示列的值，按需前置原始行号"""
     lines = []
     for record in records:
         values = [value_json(record[column], column, value_format.time_columns, value_format.time_format, value_format.short_blob, value_format.max_depth) for column in display_columns]
-        lines.append(f"{row_marker(record['#'])} {join_values(values)}")
+        prefix = f"{row_marker(record['#'])} " if row_number else ""
+        lines.append(prefix + join_values(values))
     return "\n".join(lines)
 
 
-def render_count_by(entries, options, total, value_format):
+def render_count_by(entries, options, total, value_format, row_number):
     """--count-by 的渲染入口。"""
     if total == 0:
         return
@@ -80,7 +81,7 @@ def render_count_by(entries, options, total, value_format):
             value = value_text(node.value, count_columns[level], value_format.time_columns, value_format.time_format, value_format.short_blob, value_format.max_depth)
             info = ""
             if display_columns and level == last:
-                info = faint("…") if node.records is None else stat_info(node.records, display_columns, value_format)
+                info = faint("…") if node.records is None else stat_info(node.records, display_columns, value_format, row_number)
             row = stats_row(value, node.name, node.count, parent_count, info, node.parents, show_name, show_info, show_parents, STAT_INDENT * level)
             rows.append(mark_row(row, level))
             if not node.children:
