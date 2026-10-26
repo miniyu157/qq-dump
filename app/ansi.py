@@ -12,6 +12,7 @@ class _Styles:
         self.RESET = "\033[0m" if on else ""
         self.BOLD = "\033[1m" if on else ""
         self.FAINT = "\033[2m" if on else ""
+        self.GRAY = "\033[38;5;245m" if on else ""
         self.ERR = "\033[1;38;2;255;115;108m" if on else ""
         self.WARN = "\033[1;38;2;255;226;2m" if on else ""
         self.INFO = "\033[1;38;2;121;167;252m" if on else ""

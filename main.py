@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import importlib.util
+import re
 import shutil
 import subprocess
 import sys
@@ -13,11 +14,13 @@ from app.errors import AppError
 from app.output import render_json
 from app.scripts import decrypt, get_keys, print_keys, qq_data_accessible, require_qq_data
 from app.utils import require_binaries, require_modules
+from app.version import version
 from lib.tui.choose import choose
 
-VERSION = "0.1.2"
-
 SCRIPT_DIR = Path(__file__).resolve().parent
+
+# 版本串开头的发布 tag；要求其后为分隔符或结尾，避免把 v0.1.10 截成 v0.1.1
+VERSION_TAG = re.compile(r"v\d+(?:\.\d+)*(?=$|[- ])")
 
 
 def cmd_key(args: argparse.Namespace) -> None:
@@ -144,7 +147,7 @@ def cmd_help(args: argparse.Namespace) -> None:
 def cmd_menu(args: argparse.Namespace) -> None:
     """无子命令时显示主菜单。"""
     title = (
-        f"{err.BOLD}QQ DUMP TUI v{VERSION}{err.RESET}\n"
+        f"{err.BOLD}QQ DUMP TUI {styled_version(err)}{err.RESET}\n"
         f"{err.HL}https://github.com/miniyu157/qq-dump{err.RESET}\n\n"
         f"{err.INFO}今天想要做些什么?{err.RESET}"
     )
@@ -161,12 +164,22 @@ def cmd_menu(args: argparse.Namespace) -> None:
     menu[choice][1](args)
 
 
+def styled_version(styles) -> str:
+    """开头的 tag 之后的部分显示为灰色，末尾以 RESET 结束；不以 tag 开头时原样返回"""
+    text = version()
+    match = VERSION_TAG.match(text)
+    if not match:
+        return text
+    tag = match.group()
+    return f"{tag}{styles.GRAY}{text[len(tag):]}{styles.RESET}"
+
+
 def help_text() -> str:
     """返回唯一的帮助文本；-h、help 子命令与 argparse 共用。"""
     prog = Path(sys.argv[0]).name
     _title = "\033[1;4m" if out.TTY else ""
     _cmd_a = f"{out.BOLD}{out.HL}"
-    return f"""{out.BOLD}QQ DUMP v{VERSION} -- 从 NTQQ 数据库得到信息{out.RESET}
+    return f"""{out.BOLD}QQ DUMP {styled_version(out)}{out.BOLD} -- 从 NTQQ 数据库得到信息{out.RESET}
 
   {out.FAINT}tip: 数据库文件参数 (如 -p/-n) 被需要且未指定时，
   会显示账号选择界面，并即时解密补齐。
@@ -210,6 +223,17 @@ def help_text() -> str:
 """
 
 
+class VersionAction(argparse.Action):
+    """触发时才读取版本，避免每次启动都执行 git 子进程"""
+
+    def __init__(self, option_strings: list[str], dest: str, **kwargs: object) -> None:
+        super().__init__(option_strings, dest, nargs=0, default=argparse.SUPPRESS)
+
+    def __call__(self, parser: argparse.ArgumentParser, namespace: argparse.Namespace, values: object, option_string: str | None = None) -> None:
+        print(styled_version(out))
+        parser.exit()
+
+
 class HelpParser(argparse.ArgumentParser):
     """帮助文本自持，argparse 只负责 -h 的触发与退出"""
 
@@ -228,7 +252,7 @@ def main() -> None:
     common.add_argument("-p", "--profile-db", dest="profile_db", default=argparse.SUPPRESS)
     common.add_argument("-n", "--nt-msg-db", dest="nt_msg_db", default=argparse.SUPPRESS)
     common.add_argument("-o", "--output-dir", dest="output_dir", default=argparse.SUPPRESS)
-    common.add_argument("-v", "--version", action="version", version=f"v{VERSION}")
+    common.add_argument("-v", "--version", action=VersionAction)
 
     parser = HelpParser(parents=[common])
     # 未指定子命令时显示菜单
