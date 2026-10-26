@@ -1,4 +1,4 @@
-"""好友信息查询：UID 列表来自 buddy_list，完整信息来自 profile_info_v6。"""
+"""好友信息查询：候选 UID 取 profile_info_v6 的 20001 非 0 非 null 行，是否好友由 buddy_list 判定。"""
 
 import sqlite3
 from collections.abc import Collection, Mapping
@@ -96,10 +96,11 @@ def _build_friend(table: Table, columns: Mapping[str, str], values: Mapping[str,
 
 
 def _friend_profiles(conn: sqlite3.Connection, table: Table, buddies: Collection[str], bots: Collection[str], groups: Mapping[int, str]) -> list[Friend]:
-    """查询 20072 非空的 profile 行，按 rowid 顺序返回，标记好友、非好友与机器人；非好友取 20001 作为删除时间"""
+    """查询 20001 非 0 非 null 的 profile 行，按 rowid 顺序返回，标记好友、非好友与机器人；非好友取 20001 作为删除时间"""
     columns = _profile_columns(table)
     select = ", ".join(f"[{column}]" for column in columns.values())
-    sql = f"SELECT {select} FROM [{table.name}] WHERE [{columns['close_relation']}] IS NOT NULL ORDER BY rowid"
+    deletion = columns["deletion_time"]
+    sql = f"SELECT {select} FROM [{table.name}] WHERE [{deletion}] IS NOT NULL AND [{deletion}] != 0 ORDER BY rowid"
     return [
         _build_friend(table, columns, dict(zip(FIELDS, row)), buddies, bots, groups)
         for row in conn.execute(sql)

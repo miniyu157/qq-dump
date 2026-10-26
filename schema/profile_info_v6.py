@@ -15,7 +15,7 @@ profile_info_v6 = Table("profile_info_v6", columns={
     "1000": Column("uid"),
     "1001": Column("qid"),  # 未设置时为 NULL
     "1002": Column("uin"),
-    "20001": Column("deletion_time"),  # 非好友行可作删除时间，好友行的值实为资料同步批次时间戳
+    "20001": Column("deletion_time"),  # 非好友行可作删除时间
     "20002": Column("nickname"),
     "20006": Column("birth_year"),  # 未设置时为 0
     "20007": Column("birth_month"),  # 1~12，未设置为 0

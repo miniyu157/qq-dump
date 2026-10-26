@@ -13,7 +13,18 @@ RELATIONS = {
 profile_info_v6 = Table("profile_info_v6", columns={
     "1001": Column("Qid"),  # 未设置则为 NULL
     "1002": Column("Uin"),
-    "20001": Column("根据时间戳判断好友/非好友", status=Status.EXPLORING),  # 包含所有好友、曾经的好友；取值可分为多个层级的毫秒时间戳
+
+    # 20001 时间戳：大致是好友删除/被删除的毫秒时间戳，并不精确；非 0 非 null 的行覆盖全部好友，包括已删除的。
+    #   - 判断当前好友以 buddy_list 的 1000 为准：好友被删除后会立即从 buddy_list 移除。
+    #   - 好友行通常共享一簇较新的时间戳；多数非好友的取值来自过去，大致对应删除/被删除时间。
+    #     刚删除的好友可能单独留下一个仍大于 now 的时间戳，因此不能用 20001 反推好友。
+    #   - 已确认在 buddy_list 中的好友，20001 的含义不明确，不作为判断依据。
+    #
+    # 研究复现：20001 非 0 非 null 的行与 buddy_list 的 1000 对比
+    #   values 格式：./table2d tmp/0.uin/profile_info.db profile_info_v6 -q --select 1000,20001 --scope '20001!=0' --values
+    #   buddy_list values 格式：./table2d tmp/0.uin/profile_info.db buddy_list -q --select 1000 --values
+    #   count-by 格式：./table2d tmp/0.uin/profile_info.db profile_info_v6 -k -C --scope '20001!=0' --count-by 20001 --display-columns 20048,20002,20009 --auto --sort=asc
+    "20001": Column("好友删除时间（大致）", status=Status.EXPLORING),  # 非 0 非 null 覆盖全部好友；判断好友请用 buddy_list
     "20002": Column("昵称"),
     "20003": Column("时间戳疑似与群聊相关", status=Status.EXPLORING),
     "20009": Column("主人设置的备注"),
@@ -26,7 +37,7 @@ profile_info_v6 = Table("profile_info_v6", columns={
     "20014": Column("性别", enum={0: "未知", 1: "男", 2: "女", 255: "秘密"}),
     "20048": Column("好友/非好友分组 ID", status=Status.EXPLORING),
     "20070": Column("亲密度"),  # 与该好友的亲密度数值，非好友或未产生亲密度时为 0
-    # 密友关系 ID 随版本增补，未收录的 ID 不映射名称
+    # 密友关系 ID 随版本增补，未收录的 ID 不映射名称，不要用 20072 取好友列表。
     "20072": Column("密友关系", status=Status.HIDDEN, proto={
         20073: ProtoField("预设关系 ID 列表", enum=RELATIONS),
         20074: ProtoField("当前展示关系 ID", enum=RELATIONS),
