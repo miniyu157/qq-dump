@@ -22,7 +22,7 @@ import scan
 from count_by import ValueFormat, build_entries, render_count_by, resolve_options, validate_columns
 from value_format import cell, decode, format_timestamp, is_leaf, is_message, timestamp_units, value_json
 
-from lib.wire import as_node, node_paths, prune, without_hex
+from node import as_node, node_paths, prune, without_hex
 from render import join_values, render_count, render_progress, render_rows, render_rule, render_small_table, render_summary, render_tables, render_values, row_marker, status_row_styles
 
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_]+$")

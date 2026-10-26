@@ -12,8 +12,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from api import load_friends, load_owner
-from lib.ansi import _bold, _reset, _tty
-from lib.utils import good_log
+from app.ansi import out
+from app.utils import good_log
 from service.avatars import avatar, prepare_cache
 
 HOST = "127.0.0.1"
@@ -137,9 +137,9 @@ def serve(profile_db: str, nt_db: str | None = None) -> None:
 
     host, port = server.server_address
     url = f"http://{host}:{port}/"
-    if _tty:
+    if out.TTY:
         print("\033[2J\033[H", end="", flush=True)
-    print(f"{_bold}QQ DUMP WebUI{_reset}")
+    print(f"{out.BOLD}QQ DUMP WebUI{out.RESET}")
     good_log(url)
 
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)

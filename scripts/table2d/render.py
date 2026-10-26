@@ -10,7 +10,7 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
-from lib.wire import child_path
+from node import child_path
 
 # 无终端时的分割线宽度
 FALLBACK_WIDTH = 80

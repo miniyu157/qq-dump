@@ -1,16 +1,14 @@
-"""好友信息查询：候选 UID 取 profile_info_v6 的 20001 非 0 非 null 行，是否好友由 buddy_list 判定。"""
+"""好友信息查询: 候选 UID 取 profile_info_v6 的 20001 非 0 非 null 行，是否好友由 buddy_list 判定。"""
 
 import sqlite3
 from collections.abc import Collection, Mapping
-from contextlib import closing
 from typing import NamedTuple
 
 from lib.wire import parse_fields
 from schema import Table
 
-from .bots import _bot_uids
-from .categories import _group_names, owner_uid
-from .database import open_db, resolve_column, resolve_field, table_map
+from .categories import group_names, owner_uid
+from .database import connect, resolve_column, resolve_field, table_map, uid_set
 
 
 class Friend(NamedTuple):
@@ -56,10 +54,45 @@ FIELDS = (
 )
 
 
-def _friend_uids(conn: sqlite3.Connection, table: Table) -> set[str]:
-    """读取 buddy_list 的 uid 列，返回好友 UID 集合"""
-    column = resolve_column(table, "uid")
-    return {row[0] for row in conn.execute(f"SELECT [{column}] FROM [{table.name}]")}
+class _Related(NamedTuple):
+    """构造 Friend 需要的关联数据: 好友 UID、机器人 UID 与分组名称"""
+
+    buddies: Collection[str]
+    bots: Collection[str]
+    groups: Mapping[int, str]
+
+
+def load_friends(db_path: str) -> list[Friend]:
+    """按 rowid 顺序返回 20001 非 0 非 null 的 profile 行，标记好友、非好友与机器人"""
+    table = table_map(db_path, "profile_info_v6")
+    columns = _profile_columns(table)
+    deletion = columns["deletion_time"]
+    where = f"WHERE [{deletion}] IS NOT NULL AND [{deletion}] != 0"
+    with connect(db_path) as conn:
+        related = _related(conn, db_path)
+        return [_build_friend(table, columns, values, related) for values in _profile_rows(conn, table, columns, where)]
+
+
+def load_owner(db_path: str) -> Friend | None:
+    """按主人 UID 查询 profile_info_v6，返回主人 Friend；UID 或资料行缺失时返回 None"""
+    table = table_map(db_path, "profile_info_v6")
+    columns = _profile_columns(table)
+    with connect(db_path) as conn:
+        uid = owner_uid(conn, table_map(db_path, "category_list_v2"))
+        if uid is None:
+            return None
+        rows = _profile_rows(conn, table, columns, f"WHERE [{columns['uid']}] = ?", (uid,))
+        if not rows:
+            return None
+        return _build_friend(table, columns, rows[0], _related(conn, db_path), self_profile=True)
+
+
+def _related(conn: sqlite3.Connection, db_path: str) -> _Related:
+    return _Related(
+        buddies=uid_set(conn, table_map(db_path, "buddy_list")),
+        bots=uid_set(conn, table_map(db_path, "profile_info_adelie")),
+        groups=group_names(conn, table_map(db_path, "category_list_v2")),
+    )
 
 
 def _profile_columns(table: Table) -> dict[str, str]:
@@ -67,11 +100,17 @@ def _profile_columns(table: Table) -> dict[str, str]:
     return {name: resolve_column(table, name) for name in FIELDS}
 
 
-def _build_friend(table: Table, columns: Mapping[str, str], values: Mapping[str, object], buddies: Collection[str], bots: Collection[str], groups: Mapping[int, str], *, self_profile: bool = False) -> Friend:
+def _profile_rows(conn: sqlite3.Connection, table: Table, columns: Mapping[str, str], where: str, params: tuple = ()) -> list[dict[str, object]]:
+    """按 where 查询 profile 行，按 rowid 顺序返回 语义字段名 -> 值"""
+    select = ", ".join(f"[{column}]" for column in columns.values())
+    sql = f"SELECT {select} FROM [{table.name}] {where} ORDER BY rowid"
+    return [dict(zip(FIELDS, row)) for row in conn.execute(sql, params)]
+
+
+def _build_friend(table: Table, columns: Mapping[str, str], values: Mapping[str, object], related: _Related, *, self_profile: bool = False) -> Friend:
     """把 profile 行转换为 Friend；self_profile 为主人自身，固定非好友且无删除时间"""
-    relation_column = columns["close_relation"]
     uid = values["uid"]
-    is_friend = False if self_profile else uid in buddies
+    is_friend = False if self_profile else uid in related.buddies
     return Friend(
         uid=uid,
         uin=values["uin"],
@@ -86,32 +125,21 @@ def _build_friend(table: Table, columns: Mapping[str, str], values: Mapping[str,
         gender=values["gender"],
         gender_name=table.columns[columns["gender"]].enum.get(values["gender"]),
         intimacy=values["intimacy"],
-        close_relation=_decode_relation(table, relation_column, values["close_relation"]),
+        close_relation=_decode_relation(table, columns["close_relation"], values["close_relation"]),
         group_id=values["group_id"],
-        group_name=groups.get(values["group_id"]),
+        group_name=related.groups.get(values["group_id"]),
         is_friend=is_friend,
-        is_bot=uid in bots,
+        is_bot=uid in related.bots,
         deletion_time=None if self_profile or is_friend else values["deletion_time"] or None,
     )
 
 
-def _friend_profiles(conn: sqlite3.Connection, table: Table, buddies: Collection[str], bots: Collection[str], groups: Mapping[int, str]) -> list[Friend]:
-    """查询 20001 非 0 非 null 的 profile 行，按 rowid 顺序返回，标记好友、非好友与机器人；非好友取 20001 作为删除时间"""
-    columns = _profile_columns(table)
-    select = ", ".join(f"[{column}]" for column in columns.values())
-    deletion = columns["deletion_time"]
-    sql = f"SELECT {select} FROM [{table.name}] WHERE [{deletion}] IS NOT NULL AND [{deletion}] != 0 ORDER BY rowid"
-    return [
-        _build_friend(table, columns, dict(zip(FIELDS, row)), buddies, bots, groups)
-        for row in conn.execute(sql)
-    ]
-
-
 def _decode_relation(table: Table, column: str, blob: bytes | None) -> str | None:
-    """解析密友关系：优先当前展示 ID，缺失时取预设列表首项，再映射为名称"""
+    """解析密友关系: 优先当前展示 ID，缺失时取预设列表首项，再映射为名称"""
     if not blob:
         return None
 
+    # blob 外层是以列号为字段号的消息，关系对象位于该字段内
     payload = next((value for number, wire, value in parse_fields(blob) or [] if number == int(column) and wire == "bytes"), None)
     if payload is None:
         return None
@@ -125,33 +153,3 @@ def _decode_relation(table: Table, column: str, blob: bytes | None) -> str | Non
     if not numbers:
         return None
     return table.enum(f"{column}.{current}", numbers[0])
-
-
-def load_friends(db_path: str) -> list[Friend]:
-    buddy_table = table_map(db_path, "buddy_list")
-    profile_table = table_map(db_path, "profile_info_v6")
-    category_table = table_map(db_path, "category_list_v2")
-    bot_table = table_map(db_path, "profile_info_adelie")
-    with closing(open_db(db_path)) as conn:
-        groups = _group_names(conn, category_table)
-        return _friend_profiles(conn, profile_table, _friend_uids(conn, buddy_table), _bot_uids(conn, bot_table), groups)
-
-
-def load_owner(db_path: str) -> Friend | None:
-    """按主人 UID 查询 profile_info_v6，返回主人 Friend；UID 或资料行缺失时返回 None"""
-    uid = owner_uid(db_path)
-    if uid is None:
-        return None
-
-    profile_table = table_map(db_path, "profile_info_v6")
-    columns = _profile_columns(profile_table)
-    select = ", ".join(f"[{column}]" for column in columns.values())
-    sql = f"SELECT {select} FROM [{profile_table.name}] WHERE [{columns['uid']}] = ? ORDER BY rowid LIMIT 1"
-    with closing(open_db(db_path)) as conn:
-        row = conn.execute(sql, (uid,)).fetchone()
-        if row is None:
-            return None
-        buddies = _friend_uids(conn, table_map(db_path, "buddy_list"))
-        bots = _bot_uids(conn, table_map(db_path, "profile_info_adelie"))
-        groups = _group_names(conn, table_map(db_path, "category_list_v2"))
-        return _build_friend(profile_table, columns, dict(zip(FIELDS, row)), buddies, bots, groups, self_profile=True)

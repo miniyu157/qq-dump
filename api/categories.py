@@ -1,24 +1,21 @@
-"""分类表数据：主人 UID 与分组名称解析。"""
+"""分类表数据: 主人 UID 与分组名称解析。"""
 
 import sqlite3
-from contextlib import closing
 
 from lib.wire import parse_fields
 from schema import Table
 
-from .database import open_db, resolve_column, resolve_field, table_map
+from .database import resolve_column, resolve_field
 
 
-def owner_uid(db_path: str) -> str | None:
+def owner_uid(conn: sqlite3.Connection, table: Table) -> str | None:
     """返回数据库中的主人 UID；表为空时返回 None"""
-    table = table_map(db_path, "category_list_v2")
     column = resolve_column(table, "owner_uid")
-    with closing(open_db(db_path)) as conn:
-        row = conn.execute(f"SELECT [{column}] FROM [{table.name}] ORDER BY rowid LIMIT 1").fetchone()
+    row = conn.execute(f"SELECT [{column}] FROM [{table.name}] ORDER BY rowid LIMIT 1").fetchone()
     return row[0] if row else None
 
 
-def _group_names(conn: sqlite3.Connection, table: Table) -> dict[int, str]:
+def group_names(conn: sqlite3.Connection, table: Table) -> dict[int, str]:
     """解析分组对象，返回 分组ID -> 分组名称"""
     column = resolve_column(table, "group")
     id_field = resolve_field(table, column, "group_id")
@@ -28,6 +25,7 @@ def _group_names(conn: sqlite3.Connection, table: Table) -> dict[int, str]:
     for (blob,) in conn.execute(f"SELECT [{column}] FROM [{table.name}]"):
         if not blob:
             continue
+        # blob 外层是以列号为字段号的消息，分组对象位于该字段内
         for number, wire, payload in parse_fields(blob) or []:
             if number != int(column) or wire != "bytes":
                 continue

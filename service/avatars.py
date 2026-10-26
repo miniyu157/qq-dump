@@ -14,7 +14,7 @@ _CACHE = Path(__file__).resolve().parents[1] / ".cache" / "avatars"
 
 
 def prepare_cache() -> None:
-    """创建缓存目录；不可写时在启动阶段直接暴露错误"""
+    """创建缓存目录，avatar() 依赖它已存在；不可写时在启动阶段直接暴露错误"""
     _CACHE.mkdir(parents=True, exist_ok=True)
 
 
@@ -41,10 +41,28 @@ def _fetch(uin: str) -> bytes | None:
         return None
 
 
+def _store(path: Path, data: bytes) -> None:
+    """先写临时文件再替换，避免并发读取到半份数据；任一步失败都清理临时文件"""
+    with tempfile.NamedTemporaryFile(dir=_CACHE, delete=False) as tmp:
+        temp_path = Path(tmp.name)
+        try:
+            tmp.write(data)
+        except BaseException:
+            temp_path.unlink(missing_ok=True)
+            raise
+    try:
+        os.replace(temp_path, path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
 def avatar(uin: str) -> tuple[bytes, str] | None:
-    """返回头像字节与 MIME；非数字 UIN 返回 None，24 小时内命中缓存直接读取，抓取失败时回退到过期缓存"""
+    """返回头像字节与 MIME；非数字 UIN 抛 ValueError，获取失败且无缓存时返回 None。
+
+    24 小时内命中缓存直接读取，抓取失败时回退到过期缓存。调用前需先执行 prepare_cache()。
+    """
     if not uin.isdigit():
-        return None
+        raise ValueError(f"UIN 必须是数字: {uin}")
     path = _CACHE / uin
     if path.is_file() and time.time() - path.stat().st_mtime < _TTL:
         data = path.read_bytes()
@@ -53,14 +71,7 @@ def avatar(uin: str) -> tuple[bytes, str] | None:
         if data is None:
             data = path.read_bytes() if path.is_file() else None
         else:
-            _CACHE.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(dir=_CACHE, delete=False) as tmp:
-                tmp.write(data)
-                temp_path = tmp.name
-            try:
-                os.replace(temp_path, path)
-            finally:
-                Path(temp_path).unlink(missing_ok=True)
+            _store(path, data)
     if data is None:
         return None
     return data, _image_type(data)
