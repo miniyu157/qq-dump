@@ -9,6 +9,13 @@ import sys
 import tempfile
 from pathlib import Path
 
+# stderr 消息的来源前缀
+PROG = Path(__file__).name
+
+# 明文文件头长度与 cipher_page_size
+HEADER_SIZE = 1024
+PAGE_SIZE = 4096
+
 
 def db_cipher(filename: str, key: str | None, gpro_key: str | None) -> tuple[str, str] | None:
     if filename.startswith("gpro_v1-6_"):
@@ -31,6 +38,9 @@ def db_decrypt(db_path: Path, out_path: str, key: str, hmac_algorithm: str) -> N
         raise ValueError(f"输出路径不能与源数据库相同: {out_path}")
     if Path(out_path).is_dir():
         raise ValueError(f"输出路径是目录，拒绝覆盖: {out_path}")
+    # 不足一个密文页时 sqlcipher 不报错，会导出一个空库
+    if db_path.stat().st_size < HEADER_SIZE + PAGE_SIZE:
+        raise ValueError("文件过小，不是完整的加密库")
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -58,10 +68,18 @@ def db_decrypt(db_path: Path, out_path: str, key: str, hmac_algorithm: str) -> N
         ]) + "\n"
         result = subprocess.run(["sqlcipher", tmp_path], input=sql.encode(), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=False)
         if result.returncode != 0:
-            detail = result.stderr.decode(errors="replace").strip()
-            raise RuntimeError(f"sqlcipher 失败 ({result.returncode}): {detail}")
+            raise RuntimeError(sqlcipher_reason(result.returncode, result.stderr.decode(errors="replace")))
     finally:
         Path(tmp_path).unlink()
+
+
+def sqlcipher_reason(code: int, stderr: str) -> str:
+    """把 sqlcipher 的多行 stderr 归纳为一行原因；未识别时取末行"""
+    # 密钥错误与非加密库都在第 1 页 HMAC 校验处失败，sqlcipher 无法区分两者
+    if "hmac check failed" in stderr:
+        return "密钥不匹配或文件不是加密库"
+    lines = [line for line in stderr.splitlines() if line.strip()]
+    return f"sqlcipher 失败 ({code}): {lines[-1].strip() if lines else '无输出'}"
 
 
 def main() -> None:
@@ -77,25 +95,25 @@ def main() -> None:
     db_dir = Path(args.db_dir).expanduser().resolve()
     files = args.files or sorted(db.name for db in db_dir.glob("*.db"))
 
-    failed = False
+    failed = 0
     for name in files:
         db_path = db_dir / name
         if not db_path.is_file():
-            print(f"警告: 文件不存在，跳过: {db_path}", file=sys.stderr)
-            failed = True
+            print(f"[{PROG}] 警告: 跳过 {name}: 文件不存在", file=sys.stderr)
+            failed += 1
             continue
         cipher = db_cipher(name, args.key, args.gpro_key)
         if cipher is None:
-            print(f"警告: 缺少可用密钥，跳过: {name}", file=sys.stderr)
-            failed = True
+            print(f"[{PROG}] 警告: 跳过 {name}: 缺少可用密钥", file=sys.stderr)
+            failed += 1
             continue
         key, hmac_algorithm = cipher
         try:
             out_path = safe_output_path(args.output_dir, args.name_format.format(filename=name))
             db_decrypt(db_path, out_path, key, hmac_algorithm)
         except (ValueError, RuntimeError, OSError) as exc:
-            print(f"警告: {name}: {exc}", file=sys.stderr)
-            failed = True
+            print(f"[{PROG}] 警告: {name}: {exc}", file=sys.stderr)
+            failed += 1
 
     if failed:
         sys.exit(1)

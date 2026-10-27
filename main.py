@@ -8,11 +8,13 @@ import sys
 from pathlib import Path
 
 from api.errors import DatabaseError
+from app.accounts import prepare_access, valid_keys
 from app.ansi import err, out
 from app.databases import complete_databases
+from app.env import flag_setting, path_setting
 from app.errors import AppError
 from app.output import render_json
-from app.scripts import decrypt, get_keys, print_keys, qq_data_accessible, require_qq_data
+from app.scripts import decrypt, get_keys, set_sudo_notice
 from app.utils import require_binaries, require_modules
 from app.version import version
 from lib.tui.choose import choose
@@ -24,22 +26,24 @@ VERSION_TAG = re.compile(r"v\d+(?:\.\d+)*(?=$|[- ])")
 
 
 def cmd_key(args: argparse.Namespace) -> None:
-    """调用 get_keys.py 输出密钥记录。"""
-    require_qq_data(args.root_dir, args.user)
-    as_root = not qq_data_accessible(args.root_dir, args.user)
-    raise SystemExit(print_keys(args.user, args.qq, args.root_dir, as_root=as_root))
+    """输出可用的密钥记录；被跳过的账号由 get_keys.py 警告，不影响退出码。"""
+    as_root = prepare_access(args.root_dir, args.user, decrypting=False)
+    render_json(valid_keys(get_keys(args.user, args.qq, args.root_dir, as_root=as_root)))
 
 
 def cmd_db(args: argparse.Namespace) -> None:
     """获取密钥，再逐账号解密。"""
-    require_binaries("数据库解密", ["sqlcipher"])
-    require_qq_data(args.root_dir, args.user)
-    as_root = not qq_data_accessible(args.root_dir, args.user)
+    as_root = prepare_access(args.root_dir, args.user, decrypting=True)
+    records = valid_keys(get_keys(args.user, args.qq, args.root_dir, as_root=as_root))
+
+    # 账号字段在此展开；{filename} 留给 decrypt_db.py 按实际文件名填充。全部展开成功后才开始解密
+    try:
+        name_formats = [args.name_format.format(**record, filename="{filename}") for record in records]
+    except (KeyError, IndexError, ValueError) as exc:
+        raise AppError(f"--name-format 模版无效: {args.name_format} ({exc})") from exc
 
     failed = False
-    for record in get_keys(args.user, args.qq, args.root_dir, as_root=as_root):
-        # 账号字段在此展开；{filename} 留给 decrypt_db.py 按实际文件名填充
-        name_format = args.name_format.format(**record, filename="{filename}")
+    for record, name_format in zip(records, name_formats, strict=True):
         if not decrypt(record, args.output_dir, name_format, args.files, as_root=as_root):
             failed = True
 
@@ -54,6 +58,7 @@ def cmd_avatar(args: argparse.Namespace) -> None:
     if args.chafa:
         require_binaries("使用 chafa 查看头像", ["chafa"])
     else:
+        # 默认渲染与 --ascii 都经 lib.tui.image，依赖 pillow
         require_modules("渲染头像", ["PIL"])
 
     prepare_cache()
@@ -75,7 +80,7 @@ def cmd_avatar(args: argparse.Namespace) -> None:
 
 def cmd_web(args: argparse.Namespace) -> None:
     """启动本地 WebUI。"""
-    complete_databases(args, [("profile_db", "profile_info.db")])
+    complete_databases(args, [("profile_db", "profile_info.db")], "WebUI 功能")
 
     from web.server import serve
 
@@ -104,7 +109,7 @@ def cmd_owner(args: argparse.Namespace) -> None:
 def cmd_legacy(args: argparse.Namespace) -> None:
     """检查依赖、补全缺失数据库后启动 legacy。"""
     require_modules("legacy 功能", ["blackboxprotobuf"])
-    complete_databases(args, [("profile_db", "profile_info.db"), ("nt_msg_db", "nt_msg.db")])
+    complete_databases(args, [("profile_db", "profile_info.db"), ("nt_msg_db", "nt_msg.db")], "Legacy 功能")
 
     legacy_main = SCRIPT_DIR / "legacy-dump-chat" / "main.py"
     proc = subprocess.run([sys.executable, str(legacy_main), "-p", args.profile_db, "-n", args.nt_msg_db, "-o", args.output_dir], check=False)
@@ -195,6 +200,15 @@ def help_text() -> str:
   {out.BOLD}-p, --profile-db <路径>{out.RESET}          profile_info.db 路径{out.RESET}
   {out.BOLD}-n, --nt-msg-db <路径>{out.RESET}           nt_msg.db 路径{out.RESET}
   {out.BOLD}-o, --output-dir <目录=.>{out.RESET}        输出目录 {out.FAINT}(默认: 当前目录){out.RESET}
+  {out.BOLD}--[no-]sudo-notice{out.RESET}               提权执行前显示提示 {out.FAINT}(默认: 关闭){out.RESET}
+
+{_title}环境变量:{out.RESET}
+  {out.FAINT}命令行参数优先，其次为进程环境变量，再次为仓库根目录的 .env;
+  .env 中的相对路径按仓库根目录解析。{out.RESET}
+  {out.BOLD}QQDUMP_ROOT_DIR{out.RESET}                  同 -r, --root-dir
+  {out.BOLD}QQDUMP_PROFILE_DB{out.RESET}                同 -p, --profile-db
+  {out.BOLD}QQDUMP_NT_MSG_DB{out.RESET}                 同 -n, --nt-msg-db
+  {out.BOLD}QQDUMP_SUDO_NOTICE{out.RESET}               同 --[no-]sudo-notice {out.FAINT}(1/true/yes/on 为开启){out.RESET}
 
 {_title}子命令:{out.RESET}
   {_cmd_a}key{out.RESET} [-u] [-a] [-r]               为选定用户计算数据库密钥
@@ -251,6 +265,7 @@ def main() -> None:
     common.add_argument("-r", "--root-dir", dest="root_dir", default=argparse.SUPPRESS)
     common.add_argument("-p", "--profile-db", dest="profile_db", default=argparse.SUPPRESS)
     common.add_argument("-n", "--nt-msg-db", dest="nt_msg_db", default=argparse.SUPPRESS)
+    common.add_argument("--sudo-notice", dest="sudo_notice", action=argparse.BooleanOptionalAction, default=argparse.SUPPRESS)
     common.add_argument("-o", "--output-dir", dest="output_dir", default=argparse.SUPPRESS)
     common.add_argument("-v", "--version", action=VersionAction)
 
@@ -282,9 +297,12 @@ def main() -> None:
     args = parser.parse_args()
     args.user = getattr(args, "user", None)
     args.qq = getattr(args, "qq", None)
-    args.root_dir = getattr(args, "root_dir", None)
-    args.profile_db = getattr(args, "profile_db", None)
-    args.nt_msg_db = getattr(args, "nt_msg_db", None)
+    # 优先级: --root-dir > 进程环境变量 > .env，均未设置时由下游按 / 处理
+    args.root_dir = getattr(args, "root_dir", None) or path_setting("QQDUMP_ROOT_DIR")
+    args.profile_db = getattr(args, "profile_db", None) or path_setting("QQDUMP_PROFILE_DB")
+    args.nt_msg_db = getattr(args, "nt_msg_db", None) or path_setting("QQDUMP_NT_MSG_DB")
+    sudo_notice = getattr(args, "sudo_notice", None)
+    set_sudo_notice(flag_setting("QQDUMP_SUDO_NOTICE") if sudo_notice is None else sudo_notice)
     args.output_dir = getattr(args, "output_dir", ".")
 
     try:

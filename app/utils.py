@@ -6,19 +6,27 @@ import sys
 
 from app.ansi import err
 
-__all__ = ["good_log", "info_log", "require_binaries", "require_modules", "warn_log"]
+__all__ = ["danger_log", "good_log", "info_log", "require_binaries", "require_modules", "warn_log"]
 
 
 def info_log(message: str) -> None:
+    """看起来一点儿也不危险的蓝色提示"""
     print(f"{err.INFO}i{err.RESET} {message}", file=sys.stderr)
 
 
 def warn_log(message: str) -> None:
+    """出现错误了显示的警告，其实是黄色的"""
     print(f"{err.WARN}× {message}{err.RESET}", file=sys.stderr)
 
 
 def good_log(message: str) -> None:
+    """完全胜利了"""
     print(f"{err.GOOD}●{err.RESET} {message}", file=sys.stderr)
+
+
+def danger_log(message: str) -> None:
+    """可能造成数据损失或越权等后果的警告"""
+    print(f"{err.ERR}† {message}{err.RESET}", file=sys.stderr)
 
 
 def require_binaries(purpose: str, names: list[str]) -> None:

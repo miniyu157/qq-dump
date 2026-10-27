@@ -1,32 +1,23 @@
 #!/usr/bin/env python3
-"""读取 QQ NT 数据库密钥与账号信息。"""
+"""读取 QQ NT 数据库密钥与账号信息。
+
+账号的扫描、过滤与 rand 判断由同目录的 scan_accounts 完成，本脚本只在其结果上计算密钥与 gpro 密钥。
+"""
 
 import argparse
 import hashlib
 import json
-import re
 import sys
-from itertools import pairwise
 from pathlib import Path
+
+from scan_accounts import scan_accounts
+
+# stderr 消息的来源前缀；stdout 的 JSON 由调用方解析，不加前缀
+PROG = Path(__file__).name
 
 
 def md5(data: str | bytes) -> str:
     return hashlib.md5(data.encode() if isinstance(data, str) else data).hexdigest()
-
-
-def db_rand(db_dir: Path) -> str:
-    """返回 QQ_NT DB 标记后的 8 位随机串；无合格匹配时返回空串。"""
-    # 明文前导位于第 1 页起始的 1024 字节内，按体积升序取首个携带 QQ_NT DB 标记的库
-    for db in sorted(db_dir.glob("*.db"), key=lambda path: path.stat().st_size):
-        with db.open("rb") as f:
-            lines = re.findall(rb"[\x20-\x7e]+", f.read(1024))
-        for line, rand in pairwise(lines):
-            if b"QQ_NT DB" in line:
-                rand = rand.decode("ascii")
-                if re.fullmatch(r"[A-Za-z0-9]{8}", rand):
-                    return rand
-                break
-    return ""
 
 
 def gpro_salt(db_path: Path) -> bytes:
@@ -53,46 +44,29 @@ def gpro_key(uin: str, salt: bytes) -> str:
 
 def read_keys(root: Path, user: str | None, qq: str | None) -> list[dict[str, object]]:
     records = []
-    pattern = f"data/user/{user or '*'}/com.tencent.mobileqq/files/uid/*"
-    for uid_path in sorted(root.glob(pattern)):
-        qq_path = uid_path.parent.parent.parent
-        uin, _, uid = uid_path.name.partition("###")
-        if qq and qq not in (uin, uid):
-            continue
-
-        uid_hash = md5(uid)
-        path_hash = md5(uid_hash + "nt_kernel")
-        db_dir = qq_path / "databases" / "nt_db" / f"nt_qq_{path_hash}"
-        rand = db_rand(db_dir)
+    for account in scan_accounts(root, user, qq):
         record = {
-            "qq_path": str(qq_path),
-            "user": qq_path.parent.name,
-            "uin": uin,
-            "uid": uid,
-            "uid_hash": uid_hash,
-            "path_hash": path_hash,
-            "db_dir": str(db_dir),
-            "rand": rand,
-            "key": md5(uid_hash + rand),
+            **account,
+            "key": md5(account["uid_hash"] + account["rand"]),
             "gpro_file": None,
             "gpro_salt": None,
             "gpro_key": None,
         }
 
-        gpro_name = f"gpro_v1-6_{uid}.db"
-        gpro_path = db_dir / gpro_name
+        gpro_name = f"gpro_v1-6_{account['uid']}.db"
+        gpro_path = Path(account["db_dir"]) / gpro_name
         if gpro_path.is_file():
             record["gpro_file"] = gpro_name
             try:
                 salt = gpro_salt(gpro_path)
             except OSError as exc:
-                print(f"警告: gpro 文件头读取失败，跳过: {gpro_path}: {exc}", file=sys.stderr)
+                print(f"[{PROG}] 警告: 跳过 gpro 密钥 {gpro_name}: 文件头读取失败: {exc}", file=sys.stderr)
             else:
                 if salt:
                     record["gpro_salt"] = salt.decode("ascii", errors="replace")
-                    record["gpro_key"] = gpro_key(uin, salt)
+                    record["gpro_key"] = gpro_key(account["uin"], salt)
                 else:
-                    print(f"警告: gpro 文件头无法识别盐值，跳过: {gpro_path}", file=sys.stderr)
+                    print(f"[{PROG}] 警告: 跳过 gpro 密钥 {gpro_name}: 文件头无法识别盐值", file=sys.stderr)
 
         records.append(record)
     return records
@@ -115,4 +89,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         sys.exit(130)
     except OSError as exc:
-        sys.exit(f"错误: {exc}")
+        sys.exit(f"[{PROG}] 错误: {exc}")

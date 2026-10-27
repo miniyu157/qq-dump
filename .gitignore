@@ -9,6 +9,7 @@ test/root/
 scripts/table2d/notes/
 
 .vscode
+.env
 .envrc
 .ruff_cache
 __pycache__/
