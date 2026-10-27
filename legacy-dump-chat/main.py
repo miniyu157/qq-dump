@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import shutil
 import sys
 
 import c2c
@@ -37,8 +38,11 @@ def check_paths(args):
             sys.exit(f"错误: {label} 不存在或不是文件: '{path}'")
 
 
-def clear_screen():
-    print("\033[2J\033[H", end="", flush=True)
+def push_screen():
+    """把当前屏幕内容推入滚动缓冲区，光标回到左上角；效果等同清屏，但旧内容仍可向上翻看"""
+    rows = shutil.get_terminal_size().lines
+    # 光标在第 r 行时，前 rows - r 个换行移到底部，其余 r 个换行逐行滚动，正好推走全部旧内容
+    print("\n" * rows + "\033[H", end="", flush=True)
 
 
 def print_menu(args):
@@ -77,7 +81,7 @@ def menu(args) -> int:
     rc = 0
 
     while True:
-        clear_screen()
+        push_screen()
         print_menu(args)
         choice = read_choice()
 

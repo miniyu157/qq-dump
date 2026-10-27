@@ -4,6 +4,7 @@ import errno
 import hmac
 import json
 import secrets
+import shutil
 import subprocess
 import sys
 import threading
@@ -189,6 +190,13 @@ def create_server(profile_db: str, nt_db: str | None = None) -> ThreadingHTTPSer
     return server
 
 
+def push_screen() -> None:
+    """把当前屏幕内容推入滚动缓冲区，光标回到左上角；效果等同清屏，但旧内容仍可向上翻看"""
+    rows = shutil.get_terminal_size().lines
+    # 光标在第 r 行时，前 rows - r 个换行移到底部，其余 r 个换行逐行滚动，正好推走全部旧内容
+    print("\n" * rows + "\033[H", end="", flush=True)
+
+
 def serve(profile_db: str, nt_db: str | None = None) -> None:
     """启动 WebUI，等待回车打开页面，阻塞到 Ctrl+C"""
     try:
@@ -201,7 +209,7 @@ def serve(profile_db: str, nt_db: str | None = None) -> None:
     host, port = server.server_address
     url = f"http://{host}:{port}/?token={server.token}"
     if out.TTY:
-        print("\033[2J\033[H", end="", flush=True)
+        push_screen()
     print(f"{out.BOLD}QQ DUMP WebUI{out.RESET}")
     good_log(url)
 
