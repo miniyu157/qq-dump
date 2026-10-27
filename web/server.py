@@ -2,7 +2,6 @@
 
 import errno
 import json
-import shutil
 import subprocess
 import sys
 import threading
@@ -13,7 +12,7 @@ from urllib.parse import urlsplit
 
 from api import load_friends, load_owner
 from app.ansi import out
-from app.utils import good_log
+from app.utils import good_log, prefer_binaries
 from service.avatars import avatar, prepare_cache
 
 HOST = "127.0.0.1"
@@ -145,20 +144,18 @@ def serve(profile_db: str, nt_db: str | None = None) -> None:
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
     try:
-        if sys.stdin.isatty():
+        # 缺少 xdg-open 时只提示，不等待回车，直接进入服务阻塞
+        if sys.stdin.isatty() and prefer_binaries("自动打开页面", ["xdg-open"]):
             print("按回车键使用 xdg-open 打开页面", file=sys.stderr, end="", flush=True)
             try:
                 input()
             except EOFError:
                 pass
             else:
-                if shutil.which("xdg-open") is None:
-                    print("错误: 未找到 xdg-open", file=sys.stderr)
-                else:
-                    try:
-                        subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-                    except OSError:
-                        pass
+                try:
+                    subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                except OSError:
+                    pass
         server_thread.join()
     except KeyboardInterrupt:
         pass
