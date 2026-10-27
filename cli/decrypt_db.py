@@ -38,9 +38,9 @@ def db_decrypt(db_path: Path, out_path: str, key: str, hmac_algorithm: str) -> N
         raise ValueError(f"输出路径不能与源数据库相同: {out_path}")
     if Path(out_path).is_dir():
         raise ValueError(f"输出路径是目录，拒绝覆盖: {out_path}")
-    # 不足一个密文页时 sqlcipher 不报错，会导出一个空库
+    # 不足一个密文页时 sqlcipher 不报错，会导出一个空库；照常导出，只提示结果为空
     if db_path.stat().st_size < HEADER_SIZE + PAGE_SIZE:
-        raise ValueError("文件过小，不是完整的加密库")
+        print(f"[{PROG}] 警告: {db_path.name}: 文件过小，导出结果为空库", file=sys.stderr)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
 
     try:
