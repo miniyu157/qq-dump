@@ -5,6 +5,7 @@
 
 .cache/
 tmp/
+test/root/
 scripts/table2d/notes/
 
 .vscode
