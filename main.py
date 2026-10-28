@@ -121,12 +121,14 @@ def cmd_check(args: argparse.Namespace) -> None:
     binaries = (
         ("sudo", "QQ 数据不可访问时需要"),
         ("sqlcipher", "解密数据库时需要"),
+        ("openssl", "解密超过 1 GiB 的数据库时需要"),
         ("chafa", "运行 avatar --chafa 时需要"),
     )
     # 显示 pip 包名，按导入名检查
     modules = (
         ("blackboxprotobuf", "blackboxprotobuf", "运行 legacy 时需要"),
         ("pillow", "PIL", "运行 avatar 渲染头像时需要"),
+        ("rich", "rich", "仅 Table2d 研究套件需要"),
     )
     groups = (
         ("二进制依赖", [(name, purpose, shutil.which(name) is not None) for name, purpose in binaries]),
