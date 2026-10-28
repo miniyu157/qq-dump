@@ -14,7 +14,7 @@ from app.databases import complete_databases
 from app.env import flag_setting, path_setting
 from app.errors import AppError
 from app.output import render_json
-from app.scripts import decrypt, get_keys, set_sudo_notice
+from app.scripts import decrypt, get_keys, set_sudo_notice, set_verbose
 from app.utils import require_binaries, require_modules
 from app.version import version
 from lib.tui.choose import choose
@@ -44,7 +44,7 @@ def cmd_db(args: argparse.Namespace) -> None:
 
     failed = False
     for record, name_format in zip(records, name_formats, strict=True):
-        if not decrypt(record, args.output_dir, name_format, args.files, as_root=as_root):
+        if not decrypt(record, args.output_dir, name_format, args.files, skip_empty=args.skip_empty, as_root=as_root):
             failed = True
 
     if failed:
@@ -201,6 +201,7 @@ def help_text() -> str:
   {out.BOLD}-n, --nt-msg-db <路径>{out.RESET}           nt_msg.db 路径{out.RESET}
   {out.BOLD}-o, --output-dir <目录=.>{out.RESET}        输出目录 {out.FAINT}(默认: 当前目录){out.RESET}
   {out.BOLD}--[no-]sudo-notice{out.RESET}               提权执行前显示提示 {out.FAINT}(默认: 关闭){out.RESET}
+  {out.BOLD}-v, --[no-]verbose{out.RESET}               显示详细调试信息 {out.FAINT}(默认: 关闭){out.RESET}
 
 {_title}环境变量:{out.RESET}
   {out.FAINT}命令行参数优先，其次为进程环境变量，再次为仓库根目录的 .env;
@@ -209,13 +210,15 @@ def help_text() -> str:
   {out.BOLD}QQDUMP_PROFILE_DB{out.RESET}                同 -p, --profile-db
   {out.BOLD}QQDUMP_NT_MSG_DB{out.RESET}                 同 -n, --nt-msg-db
   {out.BOLD}QQDUMP_SUDO_NOTICE{out.RESET}               同 --[no-]sudo-notice {out.FAINT}(1/true/yes/on 为开启){out.RESET}
+  {out.BOLD}QQDUMP_VERBOSE{out.RESET}                   同 -v, --[no-]verbose {out.FAINT}(1/true/yes/on 为开启){out.RESET}
 
 {_title}子命令:{out.RESET}
   {_cmd_a}key{out.RESET} [-u] [-a] [-r]               为选定用户计算数据库密钥
 
-  {_cmd_a}db{out.RESET} [-u] [-a] [-r] [-o] [-f] [files...] 为选定用户解密数据库文件
+  {_cmd_a}db{out.RESET} [-u] [-a] [-r] [-o] [-f] [--skip-empty] [files...] 为选定用户解密数据库文件
     {out.BOLD}-f, --name-format <模版>{out.RESET}       输出文件名模版，斜杠表示目录层
                                    {out.FAINT}(默认: {{user}}.{{uin}}/{{filename}}){out.RESET}
+    {out.BOLD}--skip-empty{out.RESET}                   跳过文件过小的数据库
 
   {_cmd_a}check{out.RESET}                            检查运行时依赖
 
@@ -233,7 +236,7 @@ def help_text() -> str:
 
 {_title}选项 (程序):{out.RESET}
   {out.BOLD}-h, --help{out.RESET}                       显示本帮助{out.RESET}
-  {out.BOLD}-v, --version{out.RESET}                    显示版本号
+  {out.BOLD}-V, --version{out.RESET}                    显示版本号
 """
 
 
@@ -267,7 +270,8 @@ def main() -> None:
     common.add_argument("-n", "--nt-msg-db", dest="nt_msg_db", default=argparse.SUPPRESS)
     common.add_argument("--sudo-notice", dest="sudo_notice", action=argparse.BooleanOptionalAction, default=argparse.SUPPRESS)
     common.add_argument("-o", "--output-dir", dest="output_dir", default=argparse.SUPPRESS)
-    common.add_argument("-v", "--version", action=VersionAction)
+    common.add_argument("-v", "--verbose", dest="verbose", action=argparse.BooleanOptionalAction, default=argparse.SUPPRESS)
+    common.add_argument("-V", "--version", action=VersionAction)
 
     parser = HelpParser(parents=[common])
     # 未指定子命令时显示菜单
@@ -277,6 +281,7 @@ def main() -> None:
     db_parser = sub.add_parser("db", parents=[common])
     db_parser.add_argument("files", nargs="*")
     db_parser.add_argument("-f", "--name-format", default="{user}.{uin}/{filename}")
+    db_parser.add_argument("--skip-empty", action="store_true")
     db_parser.set_defaults(func=cmd_db)
 
     sub.add_parser("check", parents=[common]).set_defaults(func=cmd_check)
@@ -303,6 +308,8 @@ def main() -> None:
     args.nt_msg_db = getattr(args, "nt_msg_db", None) or path_setting("QQDUMP_NT_MSG_DB")
     sudo_notice = getattr(args, "sudo_notice", None)
     set_sudo_notice(flag_setting("QQDUMP_SUDO_NOTICE") if sudo_notice is None else sudo_notice)
+    verbose = getattr(args, "verbose", None)
+    set_verbose(flag_setting("QQDUMP_VERBOSE") if verbose is None else verbose)
     args.output_dir = getattr(args, "output_dir", ".")
 
     try:

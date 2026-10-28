@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """读取 QQ NT 数据库密钥与账号信息。
 
-账号的扫描、过滤与 rand 判断由同目录的 scan_accounts 完成，本脚本只在其结果上计算密钥与 gpro 密钥。
+账号的扫描与过滤由同目录的 scan_accounts 完成，本脚本只在其结果上计算密钥与 gpro 密钥。
 """
 
 import argparse
@@ -12,8 +12,11 @@ from pathlib import Path
 
 from scan_accounts import scan_accounts
 
-# stderr 消息的来源前缀；stdout 的 JSON 由调用方解析，不加前缀
 PROG = Path(__file__).name
+
+
+def log(msg: str) -> None:
+    print(msg, file=sys.stderr)
 
 
 def md5(data: str | bytes) -> str:
@@ -42,7 +45,7 @@ def gpro_key(uin: str, salt: bytes) -> str:
     return md5(md5(salt) + user_seed)
 
 
-def read_keys(root: Path, user: str | None, qq: str | None) -> list[dict[str, object]]:
+def read_keys(root: Path, user: str | None, qq: str | None, *, verbose: bool = False) -> list[dict[str, object]]:
     records = []
     for account in scan_accounts(root, user, qq):
         record = {
@@ -60,14 +63,16 @@ def read_keys(root: Path, user: str | None, qq: str | None) -> list[dict[str, ob
             try:
                 salt = gpro_salt(gpro_path)
             except OSError as exc:
-                print(f"[{PROG}] 警告: 跳过 gpro 密钥 {gpro_name}: 文件头读取失败: {exc}", file=sys.stderr)
+                if verbose:
+                    log(f"{PROG}: 用户 {account['user']}.{account['uin']} 的 gpro 数据库 {gpro_name} 文件头读取失败: {exc}")
             else:
                 if salt:
                     record["gpro_salt"] = salt.decode("ascii", errors="replace")
                     record["gpro_key"] = gpro_key(account["uin"], salt)
-                else:
-                    print(f"[{PROG}] 警告: 跳过 gpro 密钥 {gpro_name}: 文件头无法识别盐值", file=sys.stderr)
-
+                elif verbose:
+                    log(f"{PROG}: 用户 {account['user']}.{account['uin']} 的 gpro 数据库 {gpro_name} 文件头无法识别盐值，未取得 gpro 密钥")
+        elif verbose:
+            log(f"{PROG}: 用户 {account['user']}.{account['uin']} 无 gpro 数据库，未取得 gpro 密钥")
         records.append(record)
     return records
 
@@ -77,10 +82,11 @@ def main() -> None:
     parser.add_argument("-u", "--user", help="选择 Android 用户 ID")
     parser.add_argument("-a", "--qq", help="选择 QQ 账号，QQ uin 或 uid")
     parser.add_argument("-r", "--root-dir", default="/", help="根目录，默认为 /")
+    parser.add_argument("-v", "--verbose", action="store_true", help="显示详细调试信息")
     args = parser.parse_args()
 
     root = Path(args.root_dir).expanduser().resolve()
-    print(json.dumps(read_keys(root, args.user, args.qq), ensure_ascii=False, indent=2))
+    print(json.dumps(read_keys(root, args.user, args.qq, verbose=args.verbose), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
@@ -89,4 +95,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         sys.exit(130)
     except OSError as exc:
-        sys.exit(f"[{PROG}] 错误: {exc}")
+        sys.exit(f"{PROG}: {exc}")

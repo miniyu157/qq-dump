@@ -39,27 +39,31 @@ def complete_databases(args: argparse.Namespace, databases: list[tuple[str, str]
     print(f"{purpose}需要数据库: {missing_text}\n也可以使用 {flags}、环境变量或 .env 中的 {envs} 预先设置\n", file=sys.stderr)
 
     as_root = prepare_access(args.root_dir, args.user, decrypting=True)
-    account = _select_account(args, as_root=as_root)
-    record = _account_key(account, args.root_dir, as_root=as_root)
 
-    # 临时数据库优先放在 tmpfs，创建失败时退回系统临时目录
+    # 临时数据库优先放在 tmpfs，创建失败时退回系统临时目录；取消选择经 sys.exit 退出时由 atexit 清理
     try:
         temp_dir = tempfile.TemporaryDirectory(prefix="qq-dump-", dir="/tmp")
     except OSError:
         temp_dir = tempfile.TemporaryDirectory(prefix="qq-dump-")
     atexit.register(temp_dir.cleanup)
+    print(f"将解密到临时目录以使用: {err.HL}{temp_dir.name}{err.RESET}\n", file=sys.stderr)
+
+    account = _select_account(args, as_root=as_root)
+    record = _account_key(account, args.root_dir, as_root=as_root)
 
     if not decrypt(record, temp_dir.name, "{filename}", names, as_root=as_root):
-        raise AppError(f"解密失败: {', '.join(names)}")
+        warn_log(f"解密失败: {', '.join(names)}")
+        sys.exit(1)
     for attr, name in missing:
         out_path = Path(temp_dir.name) / name
         if not out_path.is_file():
-            raise AppError(f"解密失败: {name}")
+            warn_log(f"解密失败: {name}")
+            sys.exit(1)
         setattr(args, attr, str(out_path))
 
 
 def _select_account(args: argparse.Namespace, *, as_root: bool) -> dict[str, object]:
-    """扫描可用账号并读取用户选择。"""
+    """从匹配账号中读取用户选择。"""
     accounts = scan_accounts(args.user, args.qq, args.root_dir, as_root=as_root)
     if not accounts:
         warn_log("未找到可用的账号")
@@ -75,7 +79,7 @@ def _select_account(args: argparse.Namespace, *, as_root: bool) -> dict[str, obj
 
 
 def _account_key(account: dict[str, object], root_dir: str | None, *, as_root: bool) -> dict[str, object]:
-    """取所选账号的密钥记录；密钥无法计算时 get_keys.py 已给出原因，此处只报告缺失。"""
+    """按 user 与 uid 匹配所选账号的密钥记录，不验证解密有效性。"""
     for record in get_keys(account["user"], account["uid"], root_dir, as_root=as_root):
         if record.get("user") == account["user"] and record.get("uid") == account["uid"]:
             return record

@@ -1,7 +1,7 @@
 """cli/ 脚本的调用层: 构造命令行，按需经 sudo 以独立进程执行。
 
-cli/ 的每个脚本对应一个函数，命令行参数只在本模块出现。
-as_root 由调用方根据 qq_data_accessible 决定。
+cli/ 的每个脚本对应一个函数，子进程命令行在本模块构造。
+as_root 由调用方决定。
 """
 
 import json
@@ -15,10 +15,13 @@ from app.ansi import err
 from app.errors import AppError
 from app.utils import danger_log, info_log, require_binaries, warn_log
 
-__all__ = ["decrypt", "get_keys", "qq_data_accessible", "require_qq_data", "scan_accounts", "set_sudo_notice"]
+__all__ = ["decrypt", "get_keys", "qq_data_accessible", "require_qq_data", "scan_accounts", "set_sudo_notice", "set_verbose"]
 
 # 由入口按 --sudo-notice 设置，_run 提权前据此决定是否输出提示
 _sudo_notice = False
+
+# 由入口按 --verbose 设置，_script 据此为每个 cli/ 脚本追加 -v
+_verbose = False
 
 _CLI_DIR = Path(__file__).resolve().parents[1] / "cli"
 
@@ -69,20 +72,25 @@ def qq_data_accessible(root_dir: str | None, user: str | None) -> bool:
 
 
 def scan_accounts(user: str | None, qq: str | None, root_dir: str | None, *, as_root: bool) -> list[dict[str, object]]:
-    """调用 scan_accounts.py，返回匹配且能取得 rand 的账号 (user、uid、uin)。"""
+    """返回匹配账号的 user、uid、uin。"""
     return _run_json(_filter_argv("scan_accounts.py", user, qq, root_dir), as_root=as_root)
 
 
 def get_keys(user: str | None, qq: str | None, root_dir: str | None, *, as_root: bool) -> list[dict[str, object]]:
-    """调用 get_keys.py，返回匹配账号的密钥记录。"""
+    """返回匹配账号的密钥记录；缺少 rand 时仍计算主密钥，gpro 密钥无法取得时为 None。"""
     return _run_json(_filter_argv("get_keys.py", user, qq, root_dir), as_root=as_root)
 
 
-def decrypt(record: dict[str, object], output_dir: str, name_format: str, files: list[str], *, as_root: bool) -> bool:
-    """调用 decrypt_db.py 解密 record 账号的 files，files 为空时解密全部；返回是否成功。"""
+def decrypt(record: dict[str, object], output_dir: str, name_format: str, files: list[str], *, skip_empty: bool = False, as_root: bool) -> bool:
+    """files 为空时处理全部 .db；skip_empty 跳过小于 5120 字节的源文件。
+
+    返回子进程是否以 0 退出；跳过空库不计失败，不保证每个文件均有输出。
+    """
     command = [*_script("decrypt_db.py"), "-d", record["db_dir"], "-k", record["key"]]
     if record["gpro_key"]:
         command += ["-g", record["gpro_key"]]
+    if skip_empty:
+        command.append("--skip-empty")
     command += ["-o", output_dir, "-f", name_format, *files]
     label = f"正在解密账号 {record['user']}.{record['uin']} 的 {err.HL}{' '.join(files) or '全部数据库文件'}{err.RESET}"
     return _run(command, as_root=as_root, label=label).returncode == 0
@@ -107,7 +115,8 @@ def _can_read(qq_dir: Path) -> bool:
 
 
 def _script(name: str) -> list[str]:
-    return [sys.executable, str(_CLI_DIR / name)]
+    command = [sys.executable, str(_CLI_DIR / name)]
+    return [*command, "-v"] if _verbose else command
 
 
 def _filter_argv(name: str, user: str | None, qq: str | None, root_dir: str | None) -> list[str]:
@@ -126,6 +135,12 @@ def set_sudo_notice(enabled: bool) -> None:
     """设置提权执行前是否输出「使用 sudo 运行」提示"""
     global _sudo_notice
     _sudo_notice = enabled
+
+
+def set_verbose(enabled: bool) -> None:
+    """设置调用 cli/ 脚本时是否传入 -v"""
+    global _verbose
+    _verbose = enabled
 
 
 def _run(command: list[str], *, as_root: bool, label: str | None = None, capture_stdout: bool = False) -> subprocess.CompletedProcess[str]:
