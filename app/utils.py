@@ -6,12 +6,17 @@ import sys
 
 from app.ansi import err
 
-__all__ = ["danger_log", "good_log", "info_log", "prefer_binaries", "require_binaries", "require_modules", "warn_log"]
+__all__ = ["cancel_log", "danger_log", "good_log", "info_log", "prefer_binaries", "require_binaries", "require_modules", "warn_log"]
 
 
 def info_log(message: str) -> None:
     """看起来一点儿也不危险的蓝色提示"""
     print(f"{err.INFO}i{err.RESET} {message}", file=sys.stderr)
+
+
+def cancel_log(message: str) -> None:
+    """预期内的用户取消提示，方块与正文整行灰色"""
+    print(f"{err.GRAY}■ {message}{err.RESET}", file=sys.stderr)
 
 
 def warn_log(message: str) -> None:

@@ -8,7 +8,7 @@ import termios
 import tty
 from collections.abc import Sequence
 
-__all__ = ["choose"]
+__all__ = ["ChoiceCancelled", "choose"]
 
 _pink = "\033[38;2;255;174;193m"
 
@@ -19,12 +19,17 @@ _HINT_GAP = 2
 _SGR = re.compile(r"\x1b\[[0-9;]*m")
 
 
+class ChoiceCancelled(ValueError):
+    """按 Esc 取消选择；继承 ValueError，只捕获 ValueError 的调用方无需改动"""
+
+
 def choose(options: Sequence[str], file=None, *, title: str = "", divider: bool = True) -> int:
     """输出标题与选项并读取选择，返回选中项的下标；file 缺省为 stderr。
 
     title 按行原样输出在选项上方；选择完成后标题与选项一起压暗。
     divider 为真时，在选择完成后输出一条终端宽度的横线。
-    非法输入与 Esc 取消抛 ValueError，EOF 与 Ctrl-C 原样抛出。
+    非法输入抛 ValueError，Esc 取消抛其子类 ChoiceCancelled，EOF 与 Ctrl-C 原样抛出；
+    异常抛出时终端状态已恢复，调用方可直接输出提示。
     """
     if not options:
         raise ValueError("选项不能为空")
@@ -115,7 +120,7 @@ def _choose_interactive(options: Sequence[str], file, title_lines: Sequence[str]
                 raise EOFError
 
             if key == b"\x1b":
-                raise ValueError("用户取消选择")
+                raise ChoiceCancelled("用户取消选择")
 
             if key in (b"\x1b[A", b"\x1bOA"):
                 index = (index - 1) % len(options)

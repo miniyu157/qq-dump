@@ -10,8 +10,8 @@ from app.accounts import prepare_access
 from app.ansi import err
 from app.errors import AppError
 from app.scripts import decrypt, get_keys, scan_accounts
-from app.utils import warn_log
-from lib.tui.choose import choose
+from app.utils import cancel_log, warn_log
+from lib.tui.choose import ChoiceCancelled, choose
 
 __all__ = ["complete_databases"]
 
@@ -73,8 +73,12 @@ def _select_account(args: argparse.Namespace, *, as_root: bool) -> dict[str, obj
     title = f"{err.INFO}请选择账号:{err.RESET}"
     try:
         choice = choose(options, title=title)
-    except (EOFError, ValueError):
-        sys.exit("未选择账号")
+    except (ChoiceCancelled, EOFError):
+        cancel_log("未选择账号")
+        sys.exit(1)
+    except ValueError as exc:
+        warn_log(str(exc))
+        sys.exit(1)
     return accounts[choice]
 
 

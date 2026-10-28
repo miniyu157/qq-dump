@@ -15,9 +15,9 @@ from app.env import flag_setting, path_setting
 from app.errors import AppError
 from app.output import render_json
 from app.scripts import decrypt, get_keys, set_sudo_notice, set_verbose
-from app.utils import require_binaries, require_modules
+from app.utils import cancel_log, require_binaries, require_modules, warn_log
 from app.version import version
-from lib.tui.choose import choose
+from lib.tui.choose import ChoiceCancelled, choose
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -164,8 +164,12 @@ def cmd_menu(args: argparse.Namespace) -> None:
     )
     try:
         choice = choose([label for label, _ in menu], title=title)
-    except (EOFError, ValueError):
-        sys.exit("未选择操作")
+    except (ChoiceCancelled, EOFError):
+        cancel_log("无事发生")
+        sys.exit(1)
+    except ValueError as exc:
+        warn_log(str(exc))
+        sys.exit(1)
     menu[choice][1](args)
 
 
