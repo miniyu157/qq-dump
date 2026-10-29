@@ -70,7 +70,7 @@ def _select_account(args: argparse.Namespace, *, as_root: bool) -> dict[str, obj
         sys.exit(1)
 
     options = [f"{account['user']}.{account['uin']}" for account in accounts]
-    title = f"{err.INFO}请选择账号:{err.RESET}"
+    title = f"{err.BOLD}{err.INFO}请选择账号:{err.RESET}"
     try:
         choice = choose(options, title=title)
     except (ChoiceCancelled, EOFError):

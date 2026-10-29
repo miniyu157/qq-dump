@@ -13,11 +13,12 @@ class _Styles:
         self.BOLD = "\033[1m" if on else ""
         self.FAINT = "\033[2m" if on else ""
         self.GRAY = "\033[38;5;245m" if on else ""
-        self.ERR = "\033[1;38;2;255;115;108m" if on else ""
-        self.WARN = "\033[1;38;2;255;226;2m" if on else ""
-        self.INFO = "\033[1;38;2;121;167;252m" if on else ""
+        self.ERR = "\033[38;2;255;115;108m" if on else ""
+        self.WARN = "\033[38;2;255;226;2m" if on else ""
+        self.INFO = "\033[38;2;121;167;252m" if on else ""
+        self.PINK = "\033[38;2;255;174;193m" if on else ""
         self.HL = "\033[1;38;2;255;174;193m" if on else ""
-        self.GOOD = "\033[1;38;2;116;251;138m" if on else ""
+        self.GOOD = "\033[38;2;116;251;138m" if on else ""
 
 
 out = _Styles(sys.stdout)

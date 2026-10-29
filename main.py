@@ -141,7 +141,7 @@ def cmd_check(args: argparse.Namespace) -> None:
         print(label, file=sys.stderr)
         for name, purpose, found in results:
             color, status = (err.GOOD, "已找到") if found else (err.ERR, "未找到")
-            print(f"{color}● {status}{err.RESET} {name} {err.FAINT}({purpose}){err.RESET}", file=sys.stderr)
+            print(f"{err.BOLD}{color}● {status}{err.RESET} {name} {err.FAINT}({purpose}){err.RESET}", file=sys.stderr)
     results = [result for _, items in groups for result in items]
     missing = sum(not found for *_, found in results)
     print(f"\n共计: {len(results)} 项, 缺失: {missing} 项", file=sys.stderr)
@@ -154,9 +154,9 @@ def cmd_help(args: argparse.Namespace) -> None:
 def cmd_menu(args: argparse.Namespace) -> None:
     """无子命令时显示主菜单。"""
     title = (
-        f"{err.BOLD}QQ DUMP TUI {styled_version(err)}{err.RESET}\n"
-        f"{err.HL}https://github.com/miniyu157/qq-dump{err.RESET}\n\n"
-        f"{err.INFO}今天想要做些什么?{err.RESET}"
+        f"{err.BOLD}QQ DUMP TUI{err.RESET} {styled_version(err)}{err.RESET}\n"
+        f"{err.PINK}https://github.com/miniyu157/qq-dump{err.RESET}\n\n"
+        f"{err.BOLD}{err.INFO}今天想要做些什么?{err.RESET}"
     )
     menu = (
         (f"运行 WebUI 服务器 {err.FAINT}(需要数据库文件){err.RESET}", cmd_web),
@@ -176,7 +176,7 @@ def cmd_menu(args: argparse.Namespace) -> None:
 
 
 def styled_version(styles) -> str:
-    """开头的 tag 之后的部分显示为灰色，末尾以 RESET 结束；不以 tag 开头时原样返回"""
+    """开头的 tag 显示为普通色，之后的部分显示为灰色，末尾以 RESET 结束；不以 tag 开头时原样返回"""
     text = version()
     match = VERSION_TAG.match(text)
     if not match:
@@ -189,15 +189,14 @@ def help_text() -> str:
     """返回唯一的帮助文本；-h、help 子命令与 argparse 共用。"""
     prog = Path(sys.argv[0]).name
     _title = "\033[1;4m" if out.TTY else ""
-    _cmd_a = f"{out.BOLD}{out.HL}"
-    return f"""{out.BOLD}QQ DUMP {styled_version(out)}{out.BOLD} -- 从 NTQQ 数据库得到信息{out.RESET}
+    return f"""{out.BOLD}QQ DUMP -- 从 NTQQ 数据库得到信息{out.RESET}
+{styled_version(out)}
 
   {out.FAINT}tip: 数据库文件参数 (如 -p/-n) 被需要且未指定时，
-  会显示账号选择界面，并即时解密补齐。
-  未指定子命令时显示菜单。{out.RESET}
+  会显示账号选择界面，并即时解密补齐。{out.RESET}
 
 {_title}用法:{out.RESET}
-  {out.BOLD}{prog}{out.RESET} [选项] [<子命令>] [命令选项] [参数]
+  {out.BOLD}{prog}{out.RESET} [选项] [子命令=menu] [命令选项] [参数]
 
 {_title}选项 (全局):{out.RESET}
   {out.BOLD}-u, --user <ID>{out.RESET}                  Android 用户 ID{out.RESET}
@@ -206,39 +205,40 @@ def help_text() -> str:
   {out.BOLD}-p, --profile-db <路径>{out.RESET}          profile_info.db 路径{out.RESET}
   {out.BOLD}-n, --nt-msg-db <路径>{out.RESET}           nt_msg.db 路径{out.RESET}
   {out.BOLD}-o, --output-dir <目录=.>{out.RESET}        输出目录 {out.FAINT}(默认: 当前目录){out.RESET}
-  {out.BOLD}--[no-]sudo-notice{out.RESET}               提权执行前显示提示 {out.FAINT}(默认: 关闭){out.RESET}
-  {out.BOLD}-v, --[no-]verbose{out.RESET}               显示详细调试信息 {out.FAINT}(默认: 关闭){out.RESET}
 
-{_title}环境变量:{out.RESET}
-  {out.FAINT}命令行参数优先，其次为进程环境变量，再次为仓库根目录的 .env;
-  .env 中的相对路径按仓库根目录解析。{out.RESET}
-  {out.BOLD}QQDUMP_ROOT_DIR{out.RESET}                  同 -r, --root-dir
-  {out.BOLD}QQDUMP_PROFILE_DB{out.RESET}                同 -p, --profile-db
-  {out.BOLD}QQDUMP_NT_MSG_DB{out.RESET}                 同 -n, --nt-msg-db
-  {out.BOLD}QQDUMP_SUDO_NOTICE{out.RESET}               同 --[no-]sudo-notice {out.FAINT}(1/true/yes/on 为开启){out.RESET}
-  {out.BOLD}QQDUMP_VERBOSE{out.RESET}                   同 -v, --[no-]verbose {out.FAINT}(1/true/yes/on 为开启){out.RESET}
-
-{_title}子命令:{out.RESET}
-  {_cmd_a}key{out.RESET} [-u] [-a] [-r]               为选定用户计算数据库密钥
-
-  {_cmd_a}db{out.RESET} [-u] [-a] [-r] [-o] [-f] [--skip-empty] [files...] 为选定用户解密数据库文件
+{_title}子命令 (解密。可使用 -u -a 选取账号):{out.RESET}
+  {out.HL}key{out.RESET}                              为选定用户计算数据库密钥
+  {out.HL}db{out.RESET} [files...]                    为选定用户解密数据库文件 {out.FAINT}(另用 -o){out.RESET}
     {out.BOLD}-f, --name-format <模版>{out.RESET}       输出文件名模版，斜杠表示目录层
                                    {out.FAINT}(默认: {{user}}.{{uin}}/{{filename}}){out.RESET}
     {out.BOLD}--skip-empty{out.RESET}                   跳过文件过小的数据库
 
-  {_cmd_a}check{out.RESET}                            检查运行时依赖
+{_title}子命令 (解析与导出。可使用 -p 指定数据库):{out.RESET}
+  {out.HL}web{out.RESET}                              启动本地 WebUI
+  {out.HL}friends{out.RESET}                          输出好友 JSON
+  {out.HL}owner{out.RESET}                            输出主人信息
+  {out.HL}l, legacy{out.RESET}                        启动 legacy-dump-chat {out.FAINT}(另用 -n -o){out.RESET}
 
-  {_cmd_a}web{out.RESET} [-p]                         启动本地 WebUI
-
-  {_cmd_a}friends{out.RESET} [-p]                     输出好友 JSON
-
-  {_cmd_a}owner{out.RESET} [-p]                       输出主人信息
-
-  {_cmd_a}l, legacy{out.RESET} [-p] [-n] [-o]         启动 legacy-dump-chat
-
-  {_cmd_a}avatar{out.RESET} <uin> [--chafa|--ascii]   根据官方 API 获取头像并渲染
-    {out.BOLD}--chafa{out.RESET}                        改用 chafa 查看头像
+{_title}子命令 (其它):{out.RESET}
+  {out.HL}menu{out.RESET}                             显示主菜单
+  {out.HL}check{out.RESET}                            检查运行时依赖
+  {out.HL}avatar{out.RESET} <uin>                     根据官方 API 获取头像并渲染
+    {out.BOLD}--chafa{out.RESET}                        改用 chafa 渲染头像
     {out.BOLD}--ascii{out.RESET}                        改用真彩色 ASCII 字符画
+
+{_title}环境变量:{out.RESET}
+  {out.FAINT}命令行参数优先，其次为进程环境变量，再次为仓库根目录的 .env;
+  .env 中的相对路径按仓库根目录解析，开关类变量取值 1/true/yes/on 为开启;{out.RESET}
+  {out.BOLD}QQDUMP_ROOT_DIR{out.RESET}                  同 -r, --root-dir
+  {out.BOLD}QQDUMP_PROFILE_DB{out.RESET}                同 -p, --profile-db
+  {out.BOLD}QQDUMP_NT_MSG_DB{out.RESET}                 同 -n, --nt-msg-db
+  {out.BOLD}QQDUMP_SUDO_NOTICE{out.RESET}               同 -s, --[no-]sudo-notice
+  {out.BOLD}QQDUMP_VERBOSE{out.RESET}                   同 -v, --[no-]verbose
+
+{_title}选项 (调试):{out.RESET}
+  {out.BOLD}-s, --[no-]sudo-notice{out.RESET}           提权执行前显示提示 {out.FAINT}(默认: 关闭){out.RESET}
+  {out.BOLD}-v, --[no-]verbose{out.RESET}               显示详细调试信息 {out.FAINT}(默认: 关闭){out.RESET}
+  {out.BOLD}-E, --ignore-env{out.RESET}                 忽略环境变量与 .env
 
 {_title}选项 (程序):{out.RESET}
   {out.BOLD}-h, --help{out.RESET}                       显示本帮助{out.RESET}
@@ -274,9 +274,10 @@ def main() -> None:
     common.add_argument("-r", "--root-dir", dest="root_dir", default=argparse.SUPPRESS)
     common.add_argument("-p", "--profile-db", dest="profile_db", default=argparse.SUPPRESS)
     common.add_argument("-n", "--nt-msg-db", dest="nt_msg_db", default=argparse.SUPPRESS)
-    common.add_argument("--sudo-notice", dest="sudo_notice", action=argparse.BooleanOptionalAction, default=argparse.SUPPRESS)
+    common.add_argument("-s", "--sudo-notice", dest="sudo_notice", action=argparse.BooleanOptionalAction, default=argparse.SUPPRESS)
     common.add_argument("-o", "--output-dir", dest="output_dir", default=argparse.SUPPRESS)
     common.add_argument("-v", "--verbose", dest="verbose", action=argparse.BooleanOptionalAction, default=argparse.SUPPRESS)
+    common.add_argument("-E", "--ignore-env", dest="ignore_env", action="store_true", default=argparse.SUPPRESS)
     common.add_argument("-V", "--version", action=VersionAction)
 
     parser = HelpParser(parents=[common])
@@ -304,18 +305,23 @@ def main() -> None:
 
     sub.add_parser("legacy", aliases=["l"], parents=[common]).set_defaults(func=cmd_legacy)
     sub.add_parser("help", parents=[common]).set_defaults(func=cmd_help)
+    sub.add_parser("menu", parents=[common]).set_defaults(func=cmd_menu)
 
     args = parser.parse_args()
     args.user = getattr(args, "user", None)
     args.qq = getattr(args, "qq", None)
     # 优先级: --root-dir > 进程环境变量 > .env，均未设置时由下游按 / 处理
-    args.root_dir = getattr(args, "root_dir", None) or path_setting("QQDUMP_ROOT_DIR")
-    args.profile_db = getattr(args, "profile_db", None) or path_setting("QQDUMP_PROFILE_DB")
-    args.nt_msg_db = getattr(args, "nt_msg_db", None) or path_setting("QQDUMP_NT_MSG_DB")
+    # -E 时配置项一律按未设置处理
+    ignore_env = getattr(args, "ignore_env", False)
+    read_path = (lambda name: None) if ignore_env else path_setting
+    read_flag = (lambda name: False) if ignore_env else flag_setting
+    args.root_dir = getattr(args, "root_dir", None) or read_path("QQDUMP_ROOT_DIR")
+    args.profile_db = getattr(args, "profile_db", None) or read_path("QQDUMP_PROFILE_DB")
+    args.nt_msg_db = getattr(args, "nt_msg_db", None) or read_path("QQDUMP_NT_MSG_DB")
     sudo_notice = getattr(args, "sudo_notice", None)
-    set_sudo_notice(flag_setting("QQDUMP_SUDO_NOTICE") if sudo_notice is None else sudo_notice)
+    set_sudo_notice(read_flag("QQDUMP_SUDO_NOTICE") if sudo_notice is None else sudo_notice)
     verbose = getattr(args, "verbose", None)
-    set_verbose(flag_setting("QQDUMP_VERBOSE") if verbose is None else verbose)
+    set_verbose(read_flag("QQDUMP_VERBOSE") if verbose is None else verbose)
     args.output_dir = getattr(args, "output_dir", ".")
 
     try:
