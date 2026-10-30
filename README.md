@@ -4,7 +4,7 @@
 
 > 项目已全面升级到 Python，其中的运行时依赖按需使用，均为非强制。  
 > 主分支已重写历史记录，包含旧提交的分支在 *[dbtools 分支](https://github.com/miniyu157/qq-dump/tree/feat/dbtools)* 仍可查看。  
-> 保留了经典消息导出项目 *[QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt)* 的完整代码，已适配此项目架构，可直接运行。
+> 保留内嵌了经典消息消息导出项目 *[QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt)* 的完整代码，已适配此项目架构，可直接运行。
 
 此文档编辑于 2026年10月30日 下午。  
 <s>写文档好累呀 T^T</s>
@@ -25,22 +25,55 @@
 
 ---
 
-## 特性
+
+> 目前的 WebUI 功能，仅为从数据库中解析详细的好友列表后，在前端显示漂亮界面渲染。  
+
+> **目前如果要解析消息或导出聊天记录，仍非常推荐使用 Legacy (QQRootFastDecrypt) 功能**  
+> QQRootFastDecrypt 代码虽然较老，除了已做交互适配和适当优化之外，功能依旧相当完善，例如：
 
 <details>
-<summary>点击展开 TODO 计划</summary>
+<summary>🦉 点击展开 Legacy (QQRootFastDecrypt) 功能特性介绍</summary>
 
-***TODO:***
-- [ ] Legacy 后续可能会完全被新的消息解析功能替代，  
-  新的消息解析体验使用精心设计的友好 TUI/WebUI 操作界面，并实现更多的统计、群聊导出、艾特统计、年度/月度/天度报告等功能。  
-  还原几乎全部的 protobuf 消息类型，最大程度上设置如何渲染与导出。
-- [ ] 还会支持 buddy/groups_msg_fts.db 等文本摘要数据库的导出与统计。
-- [ ] 将旧的 Table2D 研究分析套件 (CLI 的 50 个雷霆大参数，各种语义歧义和不一致) 完全重写到 Trowel。
+*[原 QQRootFastDecrypt 仓库地址 (已归档)](https://github.com/miniyu157/QQRootFastDecrypt)*  
+*[此项目嵌入的代码 (legacy-dump-chat 文件夹)](https://github.com/miniyu157/qq-dump/tree/main/legacy-dump-chat)*
+
+- 支持导出文件为 TXT、MD、HTML模版，每一种格式的渲染器精心设计；  
+- 交互时列出好友列表，通过菜单交互选择，也可以一键选择组；支持设置精确的时间范围；  
+- 支持选择模式导出 (如 `导出合并的时间线单文件`/`导出每个好友单独的文件`)，  
+- 支持非好友组的扫描与导出；  
+- 支持设置用户标记 (如备注、昵称，UID，或者其它自定义模版)；  
+- 覆盖的消息类型较为广泛，能够精确区分消息类型并应对不同的渲染，包括但不限于红包类型、图片类型(图片/闪照/商城表情/用户表情/QQ表情等)、多种Ark卡片的精确解析、戳一戳提示、撤回提示、系统灰条、引用消息等。  
+- 可以精确控制内容显示开关，手动设置要导出什么类型的消息，也可以添加文件头摘要。  
+- 内置一套 protobuf 损坏时，以上下文感知的补救措施。
 
 </details>
 
-> 目前的 WebUI 功能，仅为从数据库中解析好友列表后渲染。  
-> 目前如果要解析消息，仍推荐使用 Legacy 功能。
+<details>
+<summary>🐱 点击展开 TODO 计划</summary>
+
+***TODO:***
+- [ ] Legacy (QQRootFastDecrypt) 功能后续可能会完全被新的消息解析功能替代。
+  - [ ] 在那之前，完成 **彻底去 blackboxprotobuf 化**，以及交互体验的优化，性能优化等。
+    可能为导出时选择的好友列表，添加搜索功能等。
+- [ ] 新的消息解析/导出/统计等:
+  - [ ] 交互体验，使用精心设计的友好 TUI/WebUI 操作界面。
+  - [ ] 实现更多的统计、群聊导出、艾特统计、年度/月度/天度报告等功能。
+  - [ ] 各种各样的统计、花哨功能，甚至做出插件化。
+  - [ ] 还原几乎全部的 protobuf 消息类型，最大程度上个性化导出。
+  - [ ] 覆盖全数据库/全表，什么有价值就可以导出什么。
+    - [ ] 还会支持 buddy/groups_msg_fts.db 等文本摘要数据库的导出与统计。
+- [ ] **正在进行！** 将旧的 Table2D 研究分析套件 (CLI 的 50 个雷霆大参数，但其实很好用) 完全重写到 Trowel。
+
+![table2d](docs/table2d.png)
+
+> 也许会使用 Trowel 解决所有难题，覆盖全部消息类型的解析。  
+> **是的，这个东西很漂亮。**
+
+</details>
+
+---
+
+## 特性
 
 ***轻量解析:***
 
@@ -80,7 +113,7 @@
 | `db [files...]` | 为选定用户解密指定的数据库文件 |
 | `web` | 启动本地 WebUI (目前仅为好友信息浏览，包括已删除好友、亲密度、分组、删除时间等) |
 | `friends` | 输出好友列表 JSON |
-| `owner` | 输出主人 (数据库持有者) 信息 |
+| `owner` | 输出主人 (数据库持有者) 信息 JSON |
 | `legacy` | 启动经典 Legacy 消息导出 |
 | `check` | 检查运行时依赖状态 |
 | `avatar <uin>` | 使用 QQ API 获取头像并在终端渲染，支持 chafa 与真彩色 ASCII |
