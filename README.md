@@ -35,7 +35,7 @@
 <summary>🦉 点击展开 Legacy (QQRootFastDecrypt) 功能特性介绍</summary>
 
 *[原 QQRootFastDecrypt 仓库地址 (已归档)](https://github.com/miniyu157/QQRootFastDecrypt)*  
-*[此项目嵌入的代码 (legacy-dump-chat 文件夹)](https://github.com/miniyu157/qq-dump/tree/main/legacy-dump-chat)*
+*[此项目嵌入的代码 (legacy-cli 文件夹)](https://github.com/miniyu157/qq-dump/tree/main/legacy-cli)*
 
 - 支持导出文件为 TXT、MD、HTML模版，每一种格式的渲染器精心设计；  
 - 交互时列出好友列表，通过菜单交互选择，也可以一键选择组；支持设置精确的时间范围；  

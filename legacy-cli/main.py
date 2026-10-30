@@ -3,14 +3,50 @@
 import argparse
 import os
 import shutil
+import subprocess
 import sys
+from pathlib import Path
 
-import c2c
-import legacy
+
+def _export_legacy(args) -> int:
+    script = Path(__file__).resolve().parent / "cli" / "QQRootFastDecrypt" / "main.py"
+    subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--profile-db",
+            args.profile_info_db,
+            "--nt-msg-db",
+            args.nt_msg_db,
+            "--output",
+            args.output,
+        ]
+    )
+    return 0
+
+
+def _export_c2c(args) -> int:
+    script = Path(__file__).resolve().parent / "cli" / "c2c" / "main.py"
+    return subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--nt-msg-db",
+            args.nt_msg_db,
+            "--output",
+            args.output,
+        ]
+    ).returncode
+
+
+def _exit_menu(args) -> None:
+    return None
+
 
 MENUS = [
-    ("1", "聊天记录导出工具", legacy.run),
-    ("2", "[Dev] 导出 C2C 消息", c2c.run),
+    ("1", "推荐: 经典 QQRootFastDecrypt 聊天记录导出工具", _export_legacy),
+    ("2", "遗留功能: 根据 proto_maps.py 映射导出 C2C 消息为 JSONL", _export_c2c),
+    ("q", "退出", _exit_menu),
 ]
 
 
@@ -46,14 +82,20 @@ def push_screen():
 
 
 def print_menu(args):
-    print("QQNT DUMP CHAT (Legacy)\n")
-    print("Github: https://github.com/miniyu157/qq-dump\n")
-    print(f"资料库: {args.profile_info_db}")
-    print(f"消息库: {args.nt_msg_db}")
-    print(f"输出: {args.output}\n")
-    for key, title, _ in MENUS:
-        print(f"  [{key}] {title}")
-    print("  [Q] 退出\n")
+    menu_items = "\n".join(f"  \033[2;3m{key}\033[0m {title}" for key, title, _ in MENUS)
+    separator = f"\033[90m{'─' * shutil.get_terminal_size().columns}\033[0m"
+    print(f"""
+  \033[1mQQ DUMP -- Legacy 菜单\033[0m
+
+  \033[4mhttps://github.com/miniyu157/qq-dump\033[0m
+  \033[4mhttps://github.com/miniyu157/QQRootFastDecrypt\033[0m
+
+  \033[2m资料库: \033[1m{args.profile_info_db}\033[0m
+  \033[2m消息库: \033[1m{args.nt_msg_db}\033[0m
+  \033[2m输出文件夹: \033[1m{os.path.abspath(args.output)}\033[0m
+
+{menu_items}
+{separator}""")
 
 
 def read_line() -> str | None:
@@ -67,7 +109,7 @@ def read_line() -> str | None:
 def read_choice() -> str | None:
     print("选择: ", end="", flush=True)
     line = read_line()
-    return line.strip().upper() if line else None
+    return line.strip() if line else None
 
 
 def wait_enter():
@@ -77,7 +119,8 @@ def wait_enter():
 
 
 def menu(args) -> int:
-    tasks = {key: run for key, _, run in MENUS}
+    """显示交互菜单；动作返回状态码，返回 None 时结束菜单并保留上次状态码。"""
+    actions = {key: action for key, _, action in MENUS}
     rc = 0
 
     while True:
@@ -85,16 +128,19 @@ def menu(args) -> int:
         print_menu(args)
         choice = read_choice()
 
-        if choice is None or choice == "Q":
+        if choice is None:
             break
 
-        if choice not in tasks:
+        if choice not in actions:
             print(f"错误: 无效的选择: '{choice}'", file=sys.stderr)
             continue
 
         print()
         try:
-            rc = tasks[choice](args) or 0
+            result = actions[choice](args)
+            if result is None:
+                break
+            rc = result
         except Exception as e:
             print(f"错误: {e}", file=sys.stderr)
             rc = 1

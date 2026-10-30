@@ -111,7 +111,7 @@ def cmd_legacy(args: argparse.Namespace) -> None:
     require_modules("legacy 功能", ["blackboxprotobuf"])
     complete_databases(args, [("profile_db", "profile_info.db"), ("nt_msg_db", "nt_msg.db")], "Legacy 功能")
 
-    legacy_main = SCRIPT_DIR / "legacy-dump-chat" / "main.py"
+    legacy_main = SCRIPT_DIR / "legacy-cli" / "main.py"
     proc = subprocess.run([sys.executable, str(legacy_main), "-p", args.profile_db, "-n", args.nt_msg_db, "-o", args.output_dir], check=False)
     raise SystemExit(proc.returncode)
 
@@ -217,7 +217,7 @@ def help_text() -> str:
   {out.HL}web{out.RESET}                              启动本地 WebUI
   {out.HL}friends{out.RESET}                          输出好友 JSON
   {out.HL}owner{out.RESET}                            输出主人信息
-  {out.HL}l, legacy{out.RESET}                        启动 legacy-dump-chat {out.FAINT}(另用 -n -o){out.RESET}
+  {out.HL}l, legacy{out.RESET}                        启动 legacy 菜单 {out.FAINT}(另用 -n -o){out.RESET}
 
 {_title}子命令 (其它):{out.RESET}
   {out.HL}menu{out.RESET}                             显示主菜单

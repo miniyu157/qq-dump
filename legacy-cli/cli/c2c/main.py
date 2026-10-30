@@ -1,7 +1,11 @@
+#!/usr/bin/env python3
+
+import argparse
 import base64
 import json
 import os
 import sqlite3
+import sys
 import warnings
 
 # 须在导入 blackboxprotobuf 之前设置, 过滤其引入的 pkg_resources 弃用警告
@@ -9,8 +13,8 @@ warnings.filterwarnings("ignore", message="pkg_resources is deprecated.*")
 
 import blackboxprotobuf
 
-from mods import schema
-from proto_maps import IGNORE_IDS, MSG_TYPE_MAP, PROTO_FIELD_MAP
+from schema import schema
+from schema.proto_maps import IGNORE_IDS, MSG_TYPE_MAP, PROTO_FIELD_MAP
 
 
 def recursive_decode(data):
@@ -85,11 +89,7 @@ def run(args):
         total = cursor.fetchone()[0]
         print(f"共 {total} 条 C2C 消息。")
 
-        cursor.execute(
-            f'SELECT "{schema.Col_timespan}", "{schema.Col_sender_uid}",'
-            f' "{schema.Col_peer_uid}", "{schema.Col_msg}"'
-            f' FROM {schema.Table_C2c_msg} ORDER BY "{schema.Col_timespan}" ASC'
-        )
+        cursor.execute(f'SELECT "{schema.Col_timespan}", "{schema.Col_sender_uid}", "{schema.Col_peer_uid}", "{schema.Col_msg}" FROM {schema.Table_C2c_msg} ORDER BY "{schema.Col_timespan}" ASC')
 
         with open(output_path, "w", encoding="utf-8") as f_out:
             count = 0
@@ -110,3 +110,25 @@ def run(args):
         print(f"\r  已导出 {count} 条消息到 {output_path}")
     finally:
         conn.close()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="根据 proto_maps.py 映射导出 C2C 消息为 JSONL。")
+    parser.add_argument("-n", "--nt-msg-db", required=True, help="nt_msg.db 路径")
+    parser.add_argument("-o", "--output", required=True, help="输出 messages.jsonl 的文件夹路径。")
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.nt_msg_db):
+        sys.exit(f"错误: nt_msg.db 不存在或不是文件: '{args.nt_msg_db}'")
+    if not os.path.isdir(args.output):
+        sys.exit(f"错误: 没有那个文件夹: '{args.output}'")
+
+    run(args)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)
