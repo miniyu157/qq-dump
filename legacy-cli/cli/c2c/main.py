@@ -6,36 +6,29 @@ import json
 import os
 import sqlite3
 import sys
-import warnings
+from pathlib import Path
 
-# 须在导入 blackboxprotobuf 之前设置, 过滤其引入的 pkg_resources 弃用警告
-warnings.filterwarnings("ignore", message="pkg_resources is deprecated.*")
+sys.path.extend([str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parents[3])])
 
-import blackboxprotobuf
-
-from schema import schema
-from schema.proto_maps import IGNORE_IDS, MSG_TYPE_MAP, PROTO_FIELD_MAP
+from legacy_protobuf import decode_c2c
+from c2c.schema import schema
+from c2c.schema.proto_maps import IGNORE_IDS, MSG_TYPE_MAP, PROTO_FIELD_MAP
 
 
-def recursive_decode(data):
-    if not isinstance(data, (bytes, bytearray)):
-        return data
+def _load_old_decoder():
+    """加载旧递归解码器；缺少可选依赖时抛 ImportError，解码失败时保留原值。"""
+    import blackboxprotobuf
 
-    if len(data) == 0:
-        return data
+    def decode(data):
+        if not isinstance(data, (bytes, bytearray)) or not data:
+            return data
+        try:
+            message, _ = blackboxprotobuf.decode_message(data)
+            return {key: [decode(item) for item in value] if isinstance(value, list) else decode(value) for key, value in message.items()}
+        except Exception:
+            return data
 
-    try:
-        message, _ = blackboxprotobuf.decode_message(data)
-
-        decoded_message = {}
-        for key, value in message.items():
-            if isinstance(value, list):
-                decoded_message[key] = [recursive_decode(item) for item in value]
-            else:
-                decoded_message[key] = recursive_decode(value)
-        return decoded_message
-    except Exception:
-        return data
+    return decode
 
 
 def json_serializer(obj):
@@ -78,7 +71,7 @@ def map_protobuf_keys(data):
     return new_data
 
 
-def run(args):
+def run(args, *, decode):
     db_msg = args.nt_msg_db
     output_path = os.path.join(args.output, "messages.jsonl")
 
@@ -98,7 +91,7 @@ def run(args):
                     "time": ts,
                     "sender": sender or None,
                     "peer": peer or None,
-                    "msg": map_protobuf_keys(recursive_decode(msg_blob)),
+                    "msg": map_protobuf_keys(decode(msg_blob)),
                 }
                 line = json.dumps(record, ensure_ascii=False, default=json_serializer)
 
@@ -116,14 +109,22 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="根据 proto_maps.py 映射导出 C2C 消息为 JSONL。")
     parser.add_argument("-n", "--nt-msg-db", required=True, help="nt_msg.db 路径")
     parser.add_argument("-o", "--output", required=True, help="输出 messages.jsonl 的文件夹路径。")
+    parser.add_argument("--blackboxprotobuf", action="store_true", help="本次使用旧 blackboxprotobuf 解析器；默认使用 legacy_protobuf.py。")
     args = parser.parse_args()
+
+    decode = decode_c2c
+    if args.blackboxprotobuf:
+        try:
+            decode = _load_old_decoder()
+        except ImportError as exc:
+            parser.error(f"blackboxprotobuf 或其依赖不可用 ({exc})；请安装 blackboxprotobuf。")
 
     if not os.path.isfile(args.nt_msg_db):
         sys.exit(f"错误: nt_msg.db 不存在或不是文件: '{args.nt_msg_db}'")
     if not os.path.isdir(args.output):
         sys.exit(f"错误: 没有那个文件夹: '{args.output}'")
 
-    run(args)
+    run(args, decode=decode)
     return 0
 
 

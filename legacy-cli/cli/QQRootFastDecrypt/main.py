@@ -15,9 +15,6 @@ QQ NT 聊天记录导出工具
 - 支持自定义导出的用户标识格式。
 - 自动处理多种消息类型，包括文本、图片、引用、红包、系统提示等。
 - 对无法标准解析的消息提供“内容抢救”机制。
-
-依赖:
-- blackboxprotobuf: 用于解析QQ使用的Protobuf二进制数据格式。
 """
 
 import sqlite3
@@ -27,22 +24,102 @@ from datetime import datetime
 import re
 import json
 import argparse
-import warnings
+import sys
 import hashlib
 import html
+from pathlib import Path
+from contextlib import closing
+from time import perf_counter
+from typing import NamedTuple
 
-# 忽略 google.protobuf 的 pkg_resources DEPRECATED 警告
-# 这是 protobuf 库的一个已知问题，与本脚本功能无关
-warnings.filterwarnings("ignore", category=UserWarning, module="google.protobuf")
+sys.path.extend([str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parents[3])])
+
+from legacy_protobuf import decode_classic_groups, decode_classic_message
+
+_decode_groups = decode_classic_groups
+_decode_message = decode_classic_message
 
 
-# 尝试导入 blackboxprotobuf
-try:
+def _load_old_decoder():
+    """加载可选旧解析器，返回仅保留消息字典的解码函数；缺依赖时抛 ImportError。"""
     import blackboxprotobuf
-except ImportError:
-    print("错误：缺少 'blackboxprotobuf' 库。")
-    print("请使用 'pip install blackboxprotobuf' 命令进行安装。")
-    exit(1)
+
+    def decode(data):
+        message, _ = blackboxprotobuf.decode_message(data)
+        return message
+
+    return decode
+
+
+class _Timing(NamedTuple):
+    seconds: float
+    succeeded: int
+    failed: int
+
+
+def _benchmark_messages(conn, *, limit: int | None) -> list[bytes]:
+    """从连接读取最新非空消息 BLOB；limit=None 表示全部，不改变数据库。"""
+    query = f'SELECT "{COL_MSG_CONTENT}" FROM {TABLE_NAME} WHERE typeof("{COL_MSG_CONTENT}") = \'blob\' AND length("{COL_MSG_CONTENT}") > 0 ORDER BY "{COL_TIMESTAMP}" DESC, rowid DESC'
+    if limit is not None:
+        return [row[0] for row in conn.execute(query + " LIMIT ?", (limit,))]
+    return [row[0] for row in conn.execute(query)]
+
+
+def _time_decoder(messages, decode) -> _Timing:
+    """计时一轮解码，包含失败调用及计数开销；不渲染、不使用导出缓存。"""
+    succeeded = failed = 0
+    start = perf_counter()
+    for data in messages:
+        try:
+            decode(data)
+        except Exception:
+            failed += 1
+        else:
+            succeeded += 1
+    return _Timing(perf_counter() - start, succeeded, failed)
+
+
+def _compare_parsers(db_path: str) -> None:
+    """交互选择样本并只读数据库进行计时，输出结果；完成或失败后等待回车。"""
+    print("\n--- 新旧解析器耗时对比 ---")
+    print("1. 末尾 100 条\n2. 末尾 5000 条\n3. 末尾 10000 条\n4. 全部消息")
+    print("按时间倒序选取非空消息；全部消息会一次载入内存。")
+    limits = {"1": 100, "2": 5000, "3": 10000, "4": None}
+    while True:
+        choice = input("请选择 (1-4，回车取消): ").strip()
+        if not choice:
+            return
+        if choice in limits:
+            break
+        print("无效选项，请重试。")
+    try:
+        old_decode = _load_old_decoder()
+        print("读取样本中...", flush=True)
+        uri = Path(db_path).resolve().as_uri() + "?mode=ro"
+        with closing(sqlite3.connect(uri, uri=True)) as conn:
+            messages = _benchmark_messages(conn, limit=limits[choice])
+        if not messages:
+            print("没有可测试的非空消息。")
+            return
+        print(f"样本: {len(messages)} 条；每个解析器各运行一次，不计数据库读取、导入及渲染耗时。")
+        print("失败指解码抛出异常，不代表消息内容完整性；两种解析器的解码规则不同。")
+        results = []
+        for name, decode in (("legacy_protobuf.py", decode_classic_message), ("blackboxprotobuf", old_decode)):
+            print(f"正在测试 {name}...", flush=True)
+            result = _time_decoder(messages, decode)
+            results.append(result)
+            rate = len(messages) / result.seconds if result.seconds else 0
+            print(f"{name}: {result.seconds:.6f} 秒，{rate:.0f} 条/秒；成功 {result.succeeded}，失败 {result.failed}")
+        if results[0].seconds:
+            print(f"耗时比 (blackboxprotobuf / legacy_protobuf.py): {results[1].seconds / results[0].seconds:.2f}")
+    except ImportError as exc:
+        print(f"无法对比: blackboxprotobuf 或其依赖不可用 ({exc})。请安装 blackboxprotobuf。")
+    except sqlite3.Error as exc:
+        print(f"无法读取消息数据库: {exc}")
+    except KeyboardInterrupt:
+        print("\n耗时测试已取消。")
+    finally:
+        input("按回车键返回...")
 
 # --- 常量定义 ---
 
@@ -238,7 +315,7 @@ class ProfileManager:
         if not pb_data or not pb_data[0]:
             return
 
-        decoded, _ = blackboxprotobuf.decode_message(pb_data[0])
+        decoded = _decode_groups(pb_data[0])
         group_list_data = decoded.get(PROF_COL_GROUP_LIST_PB)
         if not group_list_data:
             return
@@ -536,9 +613,10 @@ def _parse_single_segment(segment: dict, export_config: dict) -> str:
         subtype = segment.get(PB_MSG_SUBTYPE)
         # 优先处理特殊动画表情（如“嘿嘿”）
         if subtype == 7:
-            desc_list = segment.get(PB_STICKER_DESC, [])
-            # desc_list中的项是bytes类型
-            return desc_list[0].decode("utf-8", "ignore") if desc_list else "[动画表情]"
+            desc = segment.get(PB_STICKER_DESC, b"")
+            if isinstance(desc, list):
+                desc = desc[0] if desc else b""
+            return desc.decode("utf-8", "ignore") if desc else "[动画表情]"
 
         # 其次处理普通动画表情和超级QQ秀
         if subtype in [1, 2]:
@@ -724,7 +802,7 @@ def decode_message_content(content, timestamp, profile_mgr, name_style, name_for
     if not content:
         return None
     try:
-        decoded, _ = blackboxprotobuf.decode_message(content)
+        decoded = _decode_message(content)
         segments_data = decoded.get(PB_MSG_CONTAINER)
         if segments_data is None:
             return ["[结构错误: 未找到消息容器]"]
@@ -949,7 +1027,7 @@ def select_export_mode():
     """让用户选择主导出模式。"""
     print()  # 打印一个空行，与上一段输出隔开
 
-    options = [("HEADER", "--- 导出合并的时间线单文件 ---"), ("1", ". 全部好友"), ("2", ". 选择分组"), ("3", ". 选择好友"), ("HEADER", "--- 导出每个好友单独的文件 ---"), ("4", ". 全部好友"), ("5", ". 选择分组"), ("6", ". 选择好友"), ("HEADER", "--- 其他 ---"), ("7", ". 导出用户信息列表"), ("8", ". [设置]")]
+    options = [("HEADER", "--- 导出合并的时间线单文件 ---"), ("1", ". 全部好友"), ("2", ". 选择分组"), ("3", ". 选择好友"), ("HEADER", "--- 导出每个好友单独的文件 ---"), ("4", ". 全部好友"), ("5", ". 选择分组"), ("6", ". 选择好友"), ("HEADER", "--- 其他 ---"), ("7", ". 导出用户信息列表"), ("8", ". [设置]"), ("9", ". 新旧解析器耗时对比")]
 
     for key, text in options:
         if key == "HEADER":
@@ -958,8 +1036,8 @@ def select_export_mode():
             print(f"  {key}{text}")
 
     while True:
-        choice = input(f"请输入选项序号 (1-8): ").strip()
-        if choice.isdigit() and 1 <= int(choice) <= 8:
+        choice = input("请输入选项序号 (1-9): ").strip()
+        if choice.isdigit() and 1 <= int(choice) <= 9:
             return int(choice)
         exit(1)
 
@@ -1664,7 +1742,16 @@ QQRootFastDecrypt -- QQ NT 聊天记录导出工具
     parser.add_argument("-p", "--profile-db", dest="profile_info_db", type=str, required=True, help="解密后的 profile_info.db 路径。")
     parser.add_argument("-n", "--nt-msg-db", type=str, required=True, help="解密后的 nt_msg.db 路径。")
     parser.add_argument("-o", "--output", type=str, required=True, help="输出目录。")
+    parser.add_argument("--blackboxprotobuf", action="store_true", help="本次运行使用旧 blackboxprotobuf 解析器；默认使用 legacy_protobuf.py。")
     args = parser.parse_args()
+
+    global _decode_groups, _decode_message
+    _decode_groups, _decode_message = decode_classic_groups, decode_classic_message
+    if args.blackboxprotobuf:
+        try:
+            _decode_groups = _decode_message = _load_old_decoder()
+        except ImportError as exc:
+            parser.error(f"blackboxprotobuf 或其依赖不可用 ({exc})；请安装 blackboxprotobuf。")
 
     # 设置基础路径变量
     global DB_PATH, PROFILE_DB_PATH, OUTPUT_DIR, CONFIG_PATH, TEMPLATE_DIR_PATH, NON_FRIENDS_CACHE_PATH
@@ -1693,6 +1780,9 @@ QQRootFastDecrypt -- QQ NT 聊天记录导出工具
     while True:
         # 2. 让用户选择主模式
         mode = select_export_mode()
+        if mode == 9:
+            _compare_parsers(DB_PATH)
+            continue
 
         # 3. 统一创建主输出目录和生成本次运行的时间戳
         os.makedirs(OUTPUT_DIR, exist_ok=True)

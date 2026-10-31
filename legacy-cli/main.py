@@ -20,6 +20,7 @@ def _export_legacy(args) -> int:
             args.nt_msg_db,
             "--output",
             args.output,
+            *(["--blackboxprotobuf"] if args.blackboxprotobuf else []),
         ]
     )
     return 0
@@ -35,6 +36,7 @@ def _export_c2c(args) -> int:
             args.nt_msg_db,
             "--output",
             args.output,
+            *(["--blackboxprotobuf"] if args.blackboxprotobuf else []),
         ]
     ).returncode
 
@@ -54,7 +56,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""
-QQNT DUMP CHAT (Legacy)
+QQ DUMP 的 Legacy 菜单
 
 Github: https://github.com/miniyu157/qq-dump
 """,
@@ -62,6 +64,7 @@ Github: https://github.com/miniyu157/qq-dump
     parser.add_argument("-p", "--profile-db", dest="profile_info_db", required=True, help="profile_info.db 路径")
     parser.add_argument("-n", "--nt-msg-db", required=True, help="nt_msg.db 路径")
     parser.add_argument("-o", "--output", required=True, help="输出结果文件的文件夹路径。")
+    parser.add_argument("--blackboxprotobuf", action="store_true", help="经典导出器与 C2C JSONL 本次使用旧解析器。")
     return parser.parse_args()
 
 
@@ -85,7 +88,7 @@ def print_menu(args):
     menu_items = "\n".join(f"  \033[2;3m{key}\033[0m {title}" for key, title, _ in MENUS)
     separator = f"\033[90m{'─' * shutil.get_terminal_size().columns}\033[0m"
     print(f"""
-  \033[1mQQ DUMP -- Legacy 菜单\033[0m
+  \033[1mQQ DUMP 的 Legacy 菜单\033[0m
 
   \033[4mhttps://github.com/miniyu157/qq-dump\033[0m
   \033[4mhttps://github.com/miniyu157/QQRootFastDecrypt\033[0m
@@ -93,6 +96,7 @@ def print_menu(args):
   \033[2m资料库: \033[1m{args.profile_info_db}\033[0m
   \033[2m消息库: \033[1m{args.nt_msg_db}\033[0m
   \033[2m输出文件夹: \033[1m{os.path.abspath(args.output)}\033[0m
+  \033[2m当前使用的解析器: \033[1m{'blackboxprotobuf 库' if args.blackboxprotobuf else 'legacy_protobuf.py'}\033[0m
 
 {menu_items}
 {separator}""")

@@ -107,12 +107,14 @@ def cmd_owner(args: argparse.Namespace) -> None:
 
 
 def cmd_legacy(args: argparse.Namespace) -> None:
-    """检查依赖、补全缺失数据库后启动 legacy。"""
-    require_modules("legacy 功能", ["blackboxprotobuf"])
+    """补全缺失数据库后启动 legacy。"""
     complete_databases(args, [("profile_db", "profile_info.db"), ("nt_msg_db", "nt_msg.db")], "Legacy 功能")
 
     legacy_main = SCRIPT_DIR / "legacy-cli" / "main.py"
-    proc = subprocess.run([sys.executable, str(legacy_main), "-p", args.profile_db, "-n", args.nt_msg_db, "-o", args.output_dir], check=False)
+    command = [sys.executable, str(legacy_main), "-p", args.profile_db, "-n", args.nt_msg_db, "-o", args.output_dir]
+    if getattr(args, "blackboxprotobuf", False):
+        command.append("--blackboxprotobuf")
+    proc = subprocess.run(command, check=False)
     raise SystemExit(proc.returncode)
 
 
@@ -126,7 +128,6 @@ def cmd_check(args: argparse.Namespace) -> None:
     )
     # 显示 pip 包名，按导入名检查
     modules = (
-        ("blackboxprotobuf", "blackboxprotobuf", "运行 legacy 时需要"),
         ("pillow", "PIL", "运行 avatar 渲染头像时需要"),
         ("rich", "rich", "仅 Table2d 研究套件需要"),
     )
@@ -218,6 +219,7 @@ def help_text() -> str:
   {out.HL}friends{out.RESET}                          输出好友 JSON
   {out.HL}owner{out.RESET}                            输出主人信息
   {out.HL}l, legacy{out.RESET}                        启动 legacy 菜单 {out.FAINT}(另用 -n -o){out.RESET}
+    {out.BOLD}--blackboxprotobuf{out.RESET}             Legacy 导出本次使用旧解析器 {out.FAINT}(默认: 自带解析器){out.RESET}
 
 {_title}子命令 (其它):{out.RESET}
   {out.HL}menu{out.RESET}                             显示主菜单
@@ -303,7 +305,9 @@ def main() -> None:
     avatar_mode.add_argument("--ascii", action="store_true")
     avatar_parser.set_defaults(func=cmd_avatar)
 
-    sub.add_parser("legacy", aliases=["l"], parents=[common]).set_defaults(func=cmd_legacy)
+    legacy_parser = sub.add_parser("legacy", aliases=["l"], parents=[common])
+    legacy_parser.add_argument("--blackboxprotobuf", action="store_true")
+    legacy_parser.set_defaults(func=cmd_legacy)
     sub.add_parser("help", parents=[common]).set_defaults(func=cmd_help)
     sub.add_parser("menu", parents=[common]).set_defaults(func=cmd_menu)
 
