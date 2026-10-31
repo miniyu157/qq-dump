@@ -126,9 +126,9 @@ def menu(args) -> int:
     """显示交互菜单；动作返回状态码，返回 None 时结束菜单并保留上次状态码。"""
     actions = {key: action for key, _, action in MENUS}
     rc = 0
+    push_screen()
 
     while True:
-        push_screen()
         print_menu(args)
         choice = read_choice()
 
@@ -136,7 +136,7 @@ def menu(args) -> int:
             break
 
         if choice not in actions:
-            print(f"错误: 无效的选择: '{choice}'", file=sys.stderr)
+            print("\033[H\033[J", end="", flush=True)
             continue
 
         print()
@@ -149,6 +149,7 @@ def menu(args) -> int:
             print(f"错误: {e}", file=sys.stderr)
             rc = 1
         wait_enter()
+        push_screen()
 
     return rc
 

@@ -352,8 +352,9 @@ class ProfileManager:
             self.non_friend_uids = []
             return
 
-        msg_db_hash = _calculate_sha256(DB_PATH)
-        profile_db_hash = _calculate_sha256(PROFILE_DB_PATH)
+        print("正在计算数据库 MD5，以校验非好友/临时会话缓存...", flush=True)
+        msg_db_hash = _calculate_md5(DB_PATH)
+        profile_db_hash = _calculate_md5(PROFILE_DB_PATH)
 
         # 尝试从缓存加载
         try:
@@ -444,14 +445,14 @@ class ProfileManager:
 
 
 # --- 时间与文件处理函数 ---
-def _calculate_sha256(filepath):
-    """计算文件的SHA256哈希值"""
-    sha256_hash = hashlib.sha256()
+def _calculate_md5(filepath):
+    """计算文件的MD5哈希值"""
+    md5_hash = hashlib.md5()
     try:
         with open(filepath, "rb") as f:
             for byte_block in iter(lambda: f.read(4096), b""):
-                sha256_hash.update(byte_block)
-        return sha256_hash.hexdigest()
+                md5_hash.update(byte_block)
+        return md5_hash.hexdigest()
     except FileNotFoundError:
         return "文件未找到"
     except Exception as e:
@@ -494,11 +495,16 @@ def _parse_time_string(input_str: str) -> dict or None:
     return {"year": int(year), "month": int(month), "day": int(day), "hour": int(hour) if hour is not None else None, "minute": int(minute) if minute is not None else None, "second": int(second) if second is not None else None}
 
 
+def _print_path_title(path_title):
+    title = " > ".join(f"\033[3;4m{text}\033[0m" for text in path_title.split(" > "))
+    print(f"\n{title}")
+
+
 def get_time_range(path_title):
     """
     【交互功能】提示用户输入时间范围，并返回处理后的起始和结束时间戳。
     """
-    print(f"\n--- {path_title} ---")
+    _print_path_title(path_title)
     print("格式:YYYY-MM-DD HH:MM:SS (年可选, 符号可为-/.或年月日)")
     print("留空则导出全部。只输入日期则包含全天。")
     start_ts, end_ts = None, None
@@ -897,8 +903,8 @@ def _generate_text_header(config: dict, rows: list, scope_info: dict) -> str:
 
     profile_mgr = config["profile_mgr"]
 
-    msg_db_hash = _calculate_sha256(DB_PATH)
-    profile_db_hash = _calculate_sha256(PROFILE_DB_PATH)
+    msg_db_hash = _calculate_md5(DB_PATH)
+    profile_db_hash = _calculate_md5(PROFILE_DB_PATH)
     gen_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     start_time = format_timestamp(rows[0][0])
     end_time = format_timestamp(rows[-1][0])
@@ -949,7 +955,7 @@ def _generate_text_header(config: dict, rows: list, scope_info: dict) -> str:
         hint_text += f"、{'、'.join(included_features)}"
     hint_text += "等消息。部分Ark卡片、系统消息和未知类型的消息可能被简化或忽略，旨在尽可能还原原始对话顺序和内容。"
 
-    header = f"QQ 聊天记录归档\n\n数据来源:\n- nt_msg.db (sha256): {msg_db_hash}\n- profile_info.db (sha256): {profile_db_hash}\n\n文件生成时间: {gen_time}\n记录开始时间: {start_time}\n记录结束时间: {end_time}\n\n主人账号: {master_name} ({master_qq})\n好友范围: {scope_text}\n用户标识: {identifier_style_text}\n\n提示: {hint_text}\n\n{'-' * 40}\n\n"
+    header = f"QQ 聊天记录归档\n\n数据来源:\n- nt_msg.db (md5): {msg_db_hash}\n- profile_info.db (md5): {profile_db_hash}\n\n文件生成时间: {gen_time}\n记录开始时间: {start_time}\n记录结束时间: {end_time}\n\n主人账号: {master_name} ({master_qq})\n好友范围: {scope_text}\n用户标识: {identifier_style_text}\n\n提示: {hint_text}\n\n{'-' * 40}\n\n"
     return header
 
 
@@ -965,8 +971,8 @@ def _generate_html_header(config: dict, rows: list, scope_info: dict) -> str:
     def safe_escape(value):
         return html.escape(html.unescape(str(value)))
 
-    msg_db_hash = _calculate_sha256(DB_PATH)
-    profile_db_hash = _calculate_sha256(PROFILE_DB_PATH)
+    msg_db_hash = _calculate_md5(DB_PATH)
+    profile_db_hash = _calculate_md5(PROFILE_DB_PATH)
     gen_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     start_time = format_timestamp(rows[0][0])
     end_time = format_timestamp(rows[-1][0])
@@ -1018,7 +1024,7 @@ def _generate_html_header(config: dict, rows: list, scope_info: dict) -> str:
     hint_text += "等消息。部分Ark卡片、系统消息和未知类型的消息可能被简化或忽略，旨在尽可能还原原始对话顺序和内容。"
 
     # 生成更具结构化的HTML文件头
-    header_html = f'<div class="header">\n<h1>QQ 聊天记录归档</h1>\n<div class="header-group data-source">\n<p><strong>数据来源:</strong></p>\n<p>- nt_msg.db (sha256): <code>{msg_db_hash}</code></p>\n<p>- profile_info.db (sha256): <code>{profile_db_hash}</code></p>\n</div>\n<div class="header-group time-info">\n<p><strong>文件生成时间:</strong> {gen_time}</p>\n<p><strong>记录开始时间:</strong> {start_time}</p>\n<p><strong>记录结束时间:</strong> {end_time}</p>\n</div>\n<div class="header-group scope-info">\n<p><strong>主人账号:</strong> {safe_escape(master_name)} ({safe_escape(master_qq)})</p>\n<p><strong>好友范围:</strong> {scope_text}</p>\n<p><strong>用户标识:</strong> {identifier_style_text}</p>\n</div>\n<div class="header-group hint-info">\n<p><strong>提示:</strong> {html.escape(hint_text)}</p>\n</div>\n</div>'
+    header_html = f'<div class="header">\n<h1>QQ 聊天记录归档</h1>\n<div class="header-group data-source">\n<p><strong>数据来源:</strong></p>\n<p>- nt_msg.db (md5): <code>{msg_db_hash}</code></p>\n<p>- profile_info.db (md5): <code>{profile_db_hash}</code></p>\n</div>\n<div class="header-group time-info">\n<p><strong>文件生成时间:</strong> {gen_time}</p>\n<p><strong>记录开始时间:</strong> {start_time}</p>\n<p><strong>记录结束时间:</strong> {end_time}</p>\n</div>\n<div class="header-group scope-info">\n<p><strong>主人账号:</strong> {safe_escape(master_name)} ({safe_escape(master_qq)})</p>\n<p><strong>好友范围:</strong> {scope_text}</p>\n<p><strong>用户标识:</strong> {identifier_style_text}</p>\n</div>\n<div class="header-group hint-info">\n<p><strong>提示:</strong> {html.escape(hint_text)}</p>\n</div>\n</div>'
     return header_html
 
 
@@ -1027,13 +1033,26 @@ def select_export_mode():
     """让用户选择主导出模式。"""
     print()  # 打印一个空行，与上一段输出隔开
 
-    options = [("HEADER", "--- 导出合并的时间线单文件 ---"), ("1", ". 全部好友"), ("2", ". 选择分组"), ("3", ". 选择好友"), ("HEADER", "--- 导出每个好友单独的文件 ---"), ("4", ". 全部好友"), ("5", ". 选择分组"), ("6", ". 选择好友"), ("HEADER", "--- 其他 ---"), ("7", ". 导出用户信息列表"), ("8", ". [设置]"), ("9", ". 新旧解析器耗时对比")]
+    options = [
+        ("HEADER", "导出合并的时间线单文件"),
+        ("1", ". 全部好友"),
+        ("2", ". 选择一个分组"),
+        ("3", ". 选择一个好友(可多选)"),
+        ("HEADER", "导出每个好友单独的文件"),
+        ("4", ". 全部好友"),
+        ("5", ". 选择分组"),
+        ("6", ". 选择好友"),
+        ("HEADER", "其他"),
+        ("7", ". 导出用户信息列表"),
+        ("8", ". [设置]"),
+        ("9", ". 新旧解析器耗时对比"),
+    ]
 
     for key, text in options:
         if key == "HEADER":
-            print(text)
+            print(f"\033[3;4m{text}\033[0m")
         else:
-            print(f"  {key}{text}")
+            print(f"\033[2;3m{key}\033[0m{text}")
 
     while True:
         choice = input("请输入选项序号 (1-9): ").strip()
@@ -1044,7 +1063,7 @@ def select_export_mode():
 
 def select_export_format(path_title: str, current_format: str) -> str:
     """让用户选择导出格式。"""
-    print(f"\n--- {path_title} ---")
+    _print_path_title(path_title)
     formats = {"1": "txt", "2": "md", "3": "html"}
     descs = {"1": "纯文本 (.txt)", "2": "Markdown (.md) [默认]", "3": "网页文件 (.html)"}
 
@@ -1063,7 +1082,7 @@ def select_export_format(path_title: str, current_format: str) -> str:
 
 def select_html_template(path_title: str, current_template_in_config: str) -> str:
     """让用户从html_templates文件夹中选择一个HTML模板，并处理模板不存在的情况。"""
-    print(f"\n--- {path_title} ---")
+    _print_path_title(path_title)
 
     if not os.path.isdir(TEMPLATE_DIR_PATH):
         print(f"错误：模板文件夹 '{TEMPLATE_DIR_PATH}' 不存在。无法进行HTML导出。")
@@ -1110,7 +1129,7 @@ def manage_export_config(path_title, config_mgr):
     temp_config = config_mgr.config.copy()
 
     while True:
-        print(f"\n--- {path_title} ---")
+        _print_path_title(path_title)
 
         # 重新构建选项字典，使其有序且统一编号
         all_options = {"1": ("show_recall", "显示撤回提示"), "2": ("show_recall_suffix", "显示个性化撤回提示"), "3": ("show_poke", "显示戳一戳/拍一拍"), "4": ("show_voice_to_text", "显示语音转文字结果"), "5": ("show_media_info", "在消息中显示媒体尺寸等信息"), "6": ("add_file_header", "在导出文件顶部添加摘要头"), "7": ("export_non_friends", "导出非好友/临时会话"), "8": ("export_format", "导出格式"), "9": ("html_template", "HTML模板"), "10": ("name_style", "用户标识格式")}
@@ -1160,7 +1179,7 @@ def manage_export_config(path_title, config_mgr):
 
 def select_user_list_mode(path_title):
     """让用户选择导出用户列表的范围。"""
-    print(f"\n--- {path_title} ---")
+    _print_path_title(path_title)
     options = ["仅好友", "全部缓存用户"]
     for i, opt in enumerate(options):
         print(f"  {i + 1}. {opt}")
@@ -1173,7 +1192,7 @@ def select_user_list_mode(path_title):
 
 def select_name_style(path_title):
     """让用户选择导出的名称显示格式，并支持回车使用默认值。"""
-    print(f"\n--- {path_title} ---")
+    _print_path_title(path_title)
     styles = {"1": "default", "2": "nickname", "3": "qq", "4": "uid", "5": "custom"}
     descs = {"1": "备注/昵称 (优先显示备注) [默认]", "2": "昵称", "3": "QQ号码", "4": "UID", "5": "自定义格式"}
     for k, v in descs.items():
@@ -1216,7 +1235,7 @@ def select_friends(profile_mgr, config_mgr, path_title):
         groups_with_friends[-2] = profile_mgr.non_friend_uids  # 使用-2作为非好友的特殊ID
 
     while True:
-        print(f"\n--- {path_title} ---")
+        _print_path_title(path_title)
 
         display_groups = {}
         # 确保分组存在才显示
@@ -1252,7 +1271,7 @@ def select_friends(profile_mgr, config_mgr, path_title):
             print("  -> 无效输入，请重试。")
             continue
 
-        print(f"\n--- {path_title} > {group_name_for_title} ---")
+        _print_path_title(f"{path_title} > {group_name_for_title}")
         selectable = {}
         i = 1
         for gid in gids_to_show:
@@ -1266,8 +1285,8 @@ def select_friends(profile_mgr, config_mgr, path_title):
 
             for uid in groups_with_friends[gid]:
                 info = profile_mgr.all_users[uid]
-                remark = f" (备注: {info['remark']})" if info["remark"] else ""
-                display = f"{info['nickname'] or info['qq']}{remark} (QQ: {info['qq']})"
+                remark = f" \033[2m(备注: {info['remark']})\033[0m" if info["remark"] else ""
+                display = f"{info['nickname'] or info['qq']}{remark} \033[90m(QQ: {info['qq']})\033[0m"
                 print(f"  {i}. {display}")
                 selectable[str(i)] = uid
                 i += 1
@@ -1285,7 +1304,7 @@ def select_friends(profile_mgr, config_mgr, path_title):
 
 def select_group(profile_mgr, config_mgr, path_title):
     """让用户从分组列表中选择一个分组。"""
-    print(f"\n--- {path_title} ---")
+    _print_path_title(path_title)
 
     friends_by_group = {}
     for uid, info in profile_mgr.all_users.items():
@@ -1327,12 +1346,25 @@ def select_group(profile_mgr, config_mgr, path_title):
 
 
 # --- 导出执行逻辑 ---
+def _iter_with_progress(rows, label):
+    """遍历消息并原地输出进度，结束时清除进度行。"""
+    total = len(rows)
+    print(f"\r\033[2K{label} (0/{total})", end="", flush=True)
+    try:
+        for index, row in enumerate(rows, 1):
+            yield row
+            if index % 1000 == 0 or index == total:
+                print(f"\r\033[2K{label} ({index}/{total})", end="", flush=True)
+    finally:
+        print("\r\033[2K", end="", flush=True)
+
+
 def _write_txt(f, rows, profile_mgr, config):
     """将聊天记录写入纯文本文件"""
     name_style = config.get("name_style", "default")
     name_format = config.get("name_format", "")
     count = 0
-    for row in rows:
+    for row in _iter_with_progress(rows, "正在处理"):
         ts, s_uid, p_uid, content = row
         parts = decode_message_content(content, ts, profile_mgr, name_style, name_format, config["export_config"], config["is_timeline"])
         if not parts:
@@ -1378,7 +1410,7 @@ def _write_md(f, rows, profile_mgr, config):
     last_sender_key = None
     last_element_was_quote = False  # 状态追踪变量
 
-    for row in rows:
+    for row in _iter_with_progress(rows, "正在处理"):
         ts, s_uid, p_uid, content = row
         parts = decode_message_content(content, ts, profile_mgr, name_style, name_format, config["export_config"], config["is_timeline"])
         if not parts:
@@ -1487,7 +1519,7 @@ def _write_html(f, rows, profile_mgr, config, scope_info):
         if last_date is not None:
             content_html_parts.append("</div></details>")
 
-    for row in rows:
+    for row in _iter_with_progress(rows, "正在处理"):
         ts, s_uid, p_uid, content = row
         parts = decode_message_content(content, ts, profile_mgr, name_style, name_format, config["export_config"], config["is_timeline"])
         if not parts:
@@ -1580,7 +1612,7 @@ def process_and_write(output_path, rows, profile_mgr, config, scope_info):
     count = 0
 
     # 预处理，检查是否有有效消息
-    valid_rows = [row for row in rows if decode_message_content(row[3], row[0], profile_mgr, config["name_style"], config["name_format"], config["export_config"], config.get("is_timeline", False))]
+    valid_rows = [row for row in _iter_with_progress(rows, "正在预处理") if decode_message_content(row[3], row[0], profile_mgr, config["name_style"], config["name_format"], config["export_config"], config.get("is_timeline", False))]
 
     if not valid_rows:
         return 0  # 没有有效消息，直接返回，不创建文件
@@ -1763,10 +1795,7 @@ QQRootFastDecrypt -- QQ NT 聊天记录导出工具
     TEMPLATE_DIR_PATH = os.path.join(script_dir, _TEMPLATE_DIR_NAME)
     NON_FRIENDS_CACHE_PATH = os.path.join(script_dir, _NON_FRIENDS_CACHE_FILENAME)
 
-    print("===== QQ聊天记录导出工具 =====")
-    print(f"资料库: {os.path.abspath(PROFILE_DB_PATH)}")
-    print(f"消息库: {os.path.abspath(DB_PATH)}")
-    print(f"输出: {os.path.abspath(output_dir)}")
+    print("\033[1mQQRootFastDecrypt -- QQ NT 聊天记录导出工具\033[0m")
 
     # 1. 初始化，加载所有用户信息和配置
     profile_mgr = ProfileManager(PROFILE_DB_PATH)
@@ -1789,7 +1818,16 @@ QQRootFastDecrypt -- QQ NT 聊天记录导出工具
         run_timestamp = f"_{int(datetime.now().timestamp())}"
 
         # 4. 根据模式执行不同操作
-        mode_titles = {1: "导出合并的时间线单文件 > 全部好友", 2: "导出合并的时间线单文件 > 选择分组", 3: "导出合并的时间线单文件 > 选择好友", 4: "导出每个好友单独的文件 > 全部好友", 5: "导出每个好友单独的文件 > 选择分组", 6: "导出每个好友单独的文件 > 选择好友", 7: "导出用户信息列表", 8: "[设置]"}
+        mode_titles = {
+            1: "导出合并的时间线单文件 > 全部好友",
+            2: "导出合并的时间线单文件 > 选择分组",
+            3: "导出合并的时间线单文件 > 选择好友",
+            4: "导出每个好友单独的文件 > 全部好友",
+            5: "导出每个好友单独的文件 > 选择分组",
+            6: "导出每个好友单独的文件 > 选择好友",
+            7: "导出用户信息列表",
+            8: "[设置]",
+        }
         path_title = mode_titles.get(mode)
 
         if mode == 8:  # 设置
@@ -1802,6 +1840,7 @@ QQRootFastDecrypt -- QQ NT 聊天记录导出工具
             list_mode = select_user_list_mode(f"{path_title} > 选择范围")
             if list_mode is None:
                 continue
+            export_started = perf_counter()
             export_user_list(profile_mgr, list_mode, run_timestamp)
             break
 
@@ -1846,11 +1885,13 @@ QQRootFastDecrypt -- QQ NT 聊天记录导出工具
             continue
 
         start_ts, end_ts = get_time_range(f"{path_title} > 设定时间范围")
+        export_started = perf_counter()
 
         config = {"start_ts": start_ts, "end_ts": end_ts, "name_style": config_mgr.config.get("name_style", "default"), "name_format": config_mgr.config.get("name_format", ""), "profile_mgr": profile_mgr, "run_timestamp": run_timestamp, "export_config": config_mgr.config}
 
         if not os.path.exists(DB_PATH):
             print(f"错误: 消息数据库文件 '{DB_PATH}' 不存在。")
+            print(f"本次用时: {perf_counter() - export_started:.6f} 秒")
             return
 
         try:
@@ -1915,6 +1956,7 @@ QQRootFastDecrypt -- QQ NT 聊天记录导出工具
 
         break  # 任务完成，退出主循环
 
+    print(f"\n本次用时: {perf_counter() - export_started:.6f} 秒")
     print("\n--- 所有任务已完成 ---")
 
 
