@@ -4,9 +4,9 @@
 
 > 项目已全面升级到 Python，其中的运行时依赖按需使用，均为非强制。  
 > 主分支已重写历史记录，包含旧提交的分支在 *[dbtools 分支](https://github.com/miniyu157/qq-dump/tree/feat/dbtools)* 仍可查看。  
-> 保留内嵌了经典消息消息导出项目 *[QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt)* 的完整代码，已适配此项目架构，可直接运行。
+> 保留内嵌了经典消息导出项目 *[QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt)* 的完整代码，已适配此项目架构，可直接运行。
 
-此文档编辑于 2026年10月30日 下午。  
+此文档编辑于 2026年10月31日 下午。  
 <s>写文档好累呀 T^T</s>
 
 ---
@@ -23,13 +23,56 @@
 
 ![tui预览](docs/tui预览.png)
 
+> 图片中依赖列表已过时，已移除 blackboxprotobuf 的检查。
+
+*Legacy 菜单示例:*
+
+![legacy菜单](docs/legacy菜单.png)
+
+*目前的 WebUI 好友浏览界面示例:*
+
+![webui](docs/webui.png)
+
 ---
 
+## TODO
 
-> 目前的 WebUI 功能，仅为从数据库中解析详细的好友列表后，在前端显示漂亮界面渲染。  
+> 目前的 WebUI 功能，仅为从数据库中解析详细的好友列表后，在前端显示漂亮界面渲染。
 
-> **目前如果要解析消息或导出聊天记录，仍非常推荐使用 Legacy (QQRootFastDecrypt) 功能**  
-> QQRootFastDecrypt 代码虽然较老，除了已做交互适配和适当优化之外，功能依旧相当完善，例如：
+<details>
+<summary>🐱 点击展开 TODO 计划</summary>
+
+***TODO:***
+- Legacy (QQRootFastDecrypt) 功能
+  - [ ] 后续可能会完全被新的消息解析功能替代，但仍旧保留 Legacy 菜单。
+  - 先让 legacy 代码看起来漂亮一点。
+    - [x] 完成 **去 blackboxprotobuf 化** 使用仓库自带的轻量解析器。
+    - [ ] 交互体验优化、性能优化等，可能为导出时选择的好友列表添加搜索功能等。
+- 新的消息解析/导出/统计等:
+  - [ ] 交互体验，使用精心设计的友好 TUI/WebUI 操作界面。
+  - [ ] 实现更多的统计、群聊导出、艾特统计、年度/月度/天度报告等功能。
+  - [ ] 各种各样的统计、花哨功能，甚至做出插件化。
+  - [ ] 还原几乎全部的 protobuf 消息类型，最大程度上个性化导出。
+  - [ ] 覆盖全数据库/全表，什么有价值就可以导出什么。
+    - [ ] 还会支持 buddy/groups_msg_fts.db 等文本摘要数据库的导出与统计。
+- [ ] **正在进行！** 将旧的 Table2D 研究分析套件 (CLI 的 50 个雷霆大参数，但其实很好用) 完全重写到 Trowel。
+
+![table2d](docs/table2d.png)
+
+> 也许会使用 Trowel 解决所有难题，探索并覆盖全部消息类型的解析。  
+> **是的，这个东西很漂亮。**
+
+</details>
+
+---
+
+## 特性
+
+***消息导出:***
+
+目前如果要解析消息或导出聊天记录，仍非常推荐使用 Legacy (QQRootFastDecrypt) 功能。
+
+Legacy 代码虽然较老，除了已做交互适配和适当优化之外，功能依旧相当完善，例如：
 
 <details>
 <summary>🦉 点击展开 Legacy (QQRootFastDecrypt) 功能特性介绍</summary>
@@ -48,37 +91,22 @@
 
 </details>
 
-<details>
-<summary>🐱 点击展开 TODO 计划</summary>
+**不止如此，Legacy 功能已改为使用仓库自带的快速 protobuf 解析器，并允许使用 `--blackboxprotobuf` 选项使用旧解析器。**
 
-***TODO:***
-- [ ] Legacy (QQRootFastDecrypt) 功能后续可能会完全被新的消息解析功能替代。
-  - [ ] 在那之前，完成 **彻底去 blackboxprotobuf 化**，以及交互体验的优化，性能优化等。
-    可能为导出时选择的好友列表，添加搜索功能等。
-- [ ] 新的消息解析/导出/统计等:
-  - [ ] 交互体验，使用精心设计的友好 TUI/WebUI 操作界面。
-  - [ ] 实现更多的统计、群聊导出、艾特统计、年度/月度/天度报告等功能。
-  - [ ] 各种各样的统计、花哨功能，甚至做出插件化。
-  - [ ] 还原几乎全部的 protobuf 消息类型，最大程度上个性化导出。
-  - [ ] 覆盖全数据库/全表，什么有价值就可以导出什么。
-    - [ ] 还会支持 buddy/groups_msg_fts.db 等文本摘要数据库的导出与统计。
-- [ ] **正在进行！** 将旧的 Table2D 研究分析套件 (CLI 的 50 个雷霆大参数，但其实很好用) 完全重写到 Trowel。
+*Legacy 新旧解析器性能对比(仅供参考):*
 
-![table2d](docs/table2d.png)
+```
+样本: 399212 条，  
+legacy_protobuf.py: 24.367353 秒，16383 条/秒；成功 399212，失败 0  
+blackboxprotobuf: 120.413602 秒，3315 条/秒；成功 399212，失败 0  
+耗时比 (blackboxprotobuf / legacy_protobuf.py): 4.94 倍
+```
 
-> 也许会使用 Trowel 解决所有难题，覆盖全部消息类型的解析。  
-> **是的，这个东西很漂亮。**
-
-</details>
-
----
-
-## 特性
+> 性能测试可以通过 `legacy` 子命令启动 Legacy 菜单，进入 `QQRootFastDecrypt` 后选择 ` 9. 新旧解析器耗时对比`。
 
 ***轻量解析:***
 
-- 新的消息解析不使用庞大的 blackboxprotobuf 库，仓库自带短小精悍的 Protobuf 解析器实现。
-- 经典 Legacy 功能仍会使用 blackboxprotobuf 库解析消息，主程序不强制依赖。
+- 消息解析器不使用庞大的 `blackboxprotobuf` 库，也不使用 `google.protobuf`，仓库自带短小精炼的 Protobuf 解析器实现。
 
 ***数据库解密:***
 
