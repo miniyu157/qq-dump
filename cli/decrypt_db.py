@@ -63,7 +63,7 @@ LOCK_REF_RE = re.compile(rf"page (\d+) (?:cell (\d+)|(right child)): 2nd referen
 
 
 def db_cipher(filename: str, key: str | None, gpro_key: str | None) -> tuple[str, str] | None:
-    if filename.startswith("gpro_v1-6_"):
+    if Path(filename).name.startswith("gpro_v1-6_"):
         return (gpro_key, "HMAC_SHA512") if gpro_key else None
     return (key, "HMAC_SHA1") if key else None
 
