@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 from api.errors import DatabaseError
@@ -23,6 +24,23 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 
 # 版本串开头的发布 tag；要求其后为分隔符或结尾，避免把 v0.1.10 截成 v0.1.1
 VERSION_TAG = re.compile(r"v\d+(?:\.\d+)*(?=$|[- ])")
+
+
+_DATABASE_HINTS = {
+    "profile_db": ("--profile-db", "QQDUMP_PROFILE_DB"),
+    "nt_msg_db": ("--nt-msg-db", "QQDUMP_NT_MSG_DB"),
+}
+
+
+def _print_database_hint(args: argparse.Namespace, databases: Sequence[tuple[str, str]], *, purpose: str = "") -> None:
+    """向 stderr 说明缺失的数据库及对应 CLI、环境变量入口，不执行补全。"""
+    missing = [(attr, name) for attr, name in databases if getattr(args, attr) is None]
+    if not missing:
+        return
+    names = ", ".join(f"{err.HL}{name}{err.RESET}" for _, name in missing)
+    flags = "、".join(f"{err.HL}{_DATABASE_HINTS[attr][0]}{err.RESET}" for attr, _ in missing)
+    envs = "、".join(f"{err.HL}{_DATABASE_HINTS[attr][1]}{err.RESET}" for attr, _ in missing)
+    print(f"{purpose}需要数据库: {names}\n也可以使用 {flags}、环境变量或 .env 中的 {envs} 预先设置\n", file=sys.stderr)
 
 
 def cmd_key(args: argparse.Namespace) -> None:
@@ -80,7 +98,9 @@ def cmd_avatar(args: argparse.Namespace) -> None:
 
 def cmd_web(args: argparse.Namespace) -> None:
     """启动本地 WebUI。"""
-    complete_databases(args, [("profile_db", "profile_info.db")], "WebUI 功能")
+    databases = [("profile_db", "profile_info.db")]
+    _print_database_hint(args, databases, purpose="WebUI 功能")
+    complete_databases(args, databases)
 
     from web.server import serve
 
@@ -89,7 +109,9 @@ def cmd_web(args: argparse.Namespace) -> None:
 
 def cmd_friends(args: argparse.Namespace) -> None:
     """输出好友 JSON。"""
-    complete_databases(args, [("profile_db", "profile_info.db")])
+    databases = [("profile_db", "profile_info.db")]
+    _print_database_hint(args, databases)
+    complete_databases(args, databases)
 
     from api import load_friends
 
@@ -98,7 +120,9 @@ def cmd_friends(args: argparse.Namespace) -> None:
 
 def cmd_owner(args: argparse.Namespace) -> None:
     """输出主人信息。"""
-    complete_databases(args, [("profile_db", "profile_info.db")])
+    databases = [("profile_db", "profile_info.db")]
+    _print_database_hint(args, databases)
+    complete_databases(args, databases)
 
     from api import load_owner
 
@@ -108,7 +132,9 @@ def cmd_owner(args: argparse.Namespace) -> None:
 
 def cmd_legacy(args: argparse.Namespace) -> None:
     """补全缺失数据库后启动 legacy。"""
-    complete_databases(args, [("profile_db", "profile_info.db"), ("nt_msg_db", "nt_msg.db")], "Legacy 功能")
+    databases = [("profile_db", "profile_info.db"), ("nt_msg_db", "nt_msg.db")]
+    _print_database_hint(args, databases, purpose="Legacy 功能")
+    complete_databases(args, databases)
 
     legacy_main = SCRIPT_DIR / "legacy-cli" / "main.py"
     command = [sys.executable, str(legacy_main), "-p", args.profile_db, "-n", args.nt_msg_db, "-o", args.output_dir]
@@ -193,58 +219,58 @@ def help_text() -> str:
     return f"""{out.BOLD}QQ DUMP -- 从 NTQQ 数据库得到信息{out.RESET}
 {styled_version(out)}
 
-  {out.FAINT}tip: 数据库文件参数 (如 -p/-n) 被需要且未指定时，
+  {out.FAINT}tip: 所需的数据库文件 (-p/-n) 未提供时，
   会显示账号选择界面，并即时解密补齐。{out.RESET}
 
 {_title}用法:{out.RESET}
   {out.BOLD}{prog}{out.RESET} [选项] [子命令=menu] [命令选项] [参数]
 
 {_title}选项 (全局):{out.RESET}
-  {out.BOLD}-u, --user <ID>{out.RESET}                  Android 用户 ID{out.RESET}
-  {out.BOLD}-a, --qq <uin/uid>{out.RESET}               QQ uin 或 uid 文本{out.RESET}
-  {out.BOLD}-r, --root-dir <目录=/>{out.RESET}          扫描根目录 {out.FAINT}(默认: /){out.RESET}
-  {out.BOLD}-p, --profile-db <路径>{out.RESET}          profile_info.db 路径{out.RESET}
-  {out.BOLD}-n, --nt-msg-db <路径>{out.RESET}           nt_msg.db 路径{out.RESET}
-  {out.BOLD}-o, --output-dir <目录=.>{out.RESET}        输出目录 {out.FAINT}(默认: 当前目录){out.RESET}
+  {out.BOLD}-u, --user <ID>{out.RESET}                       Android 用户 ID{out.RESET}
+  {out.BOLD}-a, --qq <uin/uid>{out.RESET}                    QQ uin 或 uid 文本{out.RESET}
+  {out.BOLD}-r, --root-dir <目录=/>{out.RESET}               扫描根目录 {out.FAINT}(默认: /){out.RESET}
+  {out.BOLD}-p, --profile-db <路径>{out.RESET}               profile_info.db 路径{out.RESET}
+  {out.BOLD}-n, --nt-msg-db <路径>{out.RESET}                nt_msg.db 路径{out.RESET}
+  {out.BOLD}-o, --output-dir <目录=.>{out.RESET}             输出目录 {out.FAINT}(默认: 当前目录){out.RESET}
 
-{_title}子命令 (解密。可使用 -u -a 选取账号):{out.RESET}
-  {out.HL}key{out.RESET}                              为选定用户计算数据库密钥
-  {out.HL}db{out.RESET} [files...]                    为选定用户解密数据库文件 {out.FAINT}(另用 -o){out.RESET}
-    {out.BOLD}-f, --name-format <模版>{out.RESET}       输出文件名模版，斜杠表示目录层
-                                   {out.FAINT}(默认: {{user}}.{{uin}}/{{filename}}){out.RESET}
-    {out.BOLD}--skip-empty{out.RESET}                   跳过文件过小的数据库
+{_title}子命令 (解密):{out.RESET}
+  {out.HL}key{out.RESET} {out.FAINT}[-u] [-a] [-r]{out.RESET}                    为选定用户计算数据库密钥
+  {out.HL}db{out.RESET} {out.FAINT}[-o] [-u] [-a] [-r]{out.RESET} [files...]     为选定用户解密数据库文件
+    {out.BOLD}-f, --name-format <模版>{out.RESET}            输出文件名模版，斜杠表示目录层
+                                        {out.FAINT}(默认: {{user}}.{{uin}}/{{filename}}){out.RESET}
+    {out.BOLD}--skip-empty{out.RESET}                        跳过文件过小的数据库
 
-{_title}子命令 (解析与导出。可使用 -p 指定数据库):{out.RESET}
-  {out.HL}web{out.RESET}                              启动本地 WebUI
-  {out.HL}friends{out.RESET}                          输出好友 JSON
-  {out.HL}owner{out.RESET}                            输出主人信息
-  {out.HL}l, legacy{out.RESET}                        启动 legacy 菜单 {out.FAINT}(另用 -n -o){out.RESET}
-    {out.BOLD}--blackboxprotobuf{out.RESET}             Legacy 导出本次使用旧解析器 {out.FAINT}(默认: 自带解析器){out.RESET}
+{_title}子命令 (解析与导出):{out.RESET}
+  {out.HL}web{out.RESET} {out.FAINT}[-p]{out.RESET}                              启动本地 WebUI
+  {out.HL}friends{out.RESET} {out.FAINT}[-p]{out.RESET}                          输出好友 JSON
+  {out.HL}owner{out.RESET} {out.FAINT}[-p]{out.RESET}                            输出主人信息
+  {out.HL}l, legacy{out.RESET} {out.FAINT}[-o] [-n] [-p]{out.RESET}              启动 legacy 菜单
+    {out.BOLD}--blackboxprotobuf{out.RESET}                  使用旧 protobuf 解析器
 
 {_title}子命令 (其它):{out.RESET}
-  {out.HL}menu{out.RESET}                             显示主菜单
-  {out.HL}check{out.RESET}                            检查运行时依赖
-  {out.HL}avatar{out.RESET} <uin>                     根据官方 API 获取头像并渲染
-    {out.BOLD}--chafa{out.RESET}                        改用 chafa 渲染头像
-    {out.BOLD}--ascii{out.RESET}                        改用真彩色 ASCII 字符画
+  {out.HL}menu{out.RESET}                                  显示主菜单
+  {out.HL}check{out.RESET}                                 检查运行时依赖
+  {out.HL}avatar{out.RESET} <uin>                          根据官方 API 获取头像并渲染
+    {out.BOLD}--chafa{out.RESET}                             改用 chafa 渲染头像
+    {out.BOLD}--ascii{out.RESET}                             改用真彩色 ASCII 字符画
 
 {_title}环境变量:{out.RESET}
   {out.FAINT}命令行参数优先，其次为进程环境变量，再次为仓库根目录的 .env;
   .env 中的相对路径按仓库根目录解析，开关类变量取值 1/true/yes/on 为开启;{out.RESET}
-  {out.BOLD}QQDUMP_ROOT_DIR{out.RESET}                  同 -r, --root-dir
-  {out.BOLD}QQDUMP_PROFILE_DB{out.RESET}                同 -p, --profile-db
-  {out.BOLD}QQDUMP_NT_MSG_DB{out.RESET}                 同 -n, --nt-msg-db
-  {out.BOLD}QQDUMP_SUDO_NOTICE{out.RESET}               同 -s, --[no-]sudo-notice
-  {out.BOLD}QQDUMP_VERBOSE{out.RESET}                   同 -v, --[no-]verbose
+  {out.BOLD}QQDUMP_ROOT_DIR{out.RESET}                       同 -r, --root-dir
+  {out.BOLD}QQDUMP_PROFILE_DB{out.RESET}                     同 -p, --profile-db
+  {out.BOLD}QQDUMP_NT_MSG_DB{out.RESET}                      同 -n, --nt-msg-db
+  {out.BOLD}QQDUMP_SUDO_NOTICE{out.RESET}                    同 -s, --[no-]sudo-notice
+  {out.BOLD}QQDUMP_VERBOSE{out.RESET}                        同 -v, --[no-]verbose
 
 {_title}选项 (调试):{out.RESET}
-  {out.BOLD}-s, --[no-]sudo-notice{out.RESET}           提权执行前显示提示 {out.FAINT}(默认: 关闭){out.RESET}
-  {out.BOLD}-v, --[no-]verbose{out.RESET}               显示详细调试信息 {out.FAINT}(默认: 关闭){out.RESET}
-  {out.BOLD}-E, --ignore-env{out.RESET}                 忽略环境变量与 .env
+  {out.BOLD}-s, --[no-]sudo-notice{out.RESET}                提权执行前显示提示 {out.FAINT}(默认: 关闭){out.RESET}
+  {out.BOLD}-v, --[no-]verbose{out.RESET}                    显示详细调试信息 {out.FAINT}(默认: 关闭){out.RESET}
+  {out.BOLD}-E, --ignore-env{out.RESET}                      忽略环境变量与 .env
 
 {_title}选项 (程序):{out.RESET}
-  {out.BOLD}-h, --help{out.RESET}                       显示本帮助{out.RESET}
-  {out.BOLD}-V, --version{out.RESET}                    显示版本号
+  {out.BOLD}-h, --help{out.RESET}                            显示本帮助{out.RESET}
+  {out.BOLD}-V, --version{out.RESET}                         显示版本号
 """
 
 
@@ -314,8 +340,7 @@ def main() -> None:
     args = parser.parse_args()
     args.user = getattr(args, "user", None)
     args.qq = getattr(args, "qq", None)
-    # 优先级: --root-dir > 进程环境变量 > .env，均未设置时由下游按 / 处理
-    # -E 时配置项一律按未设置处理
+    # 优先级: CLI > 进程环境变量 > .env；-E 跳过环境配置，保留 CLI 输入。
     ignore_env = getattr(args, "ignore_env", False)
     read_path = (lambda name: None) if ignore_env else path_setting
     read_flag = (lambda name: False) if ignore_env else flag_setting

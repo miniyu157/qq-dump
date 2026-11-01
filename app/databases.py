@@ -15,29 +15,24 @@ from lib.tui.choose import ChoiceCancelled, choose
 
 __all__ = ["complete_databases"]
 
-# args 属性名 -> (命令行选项, 环境变量)，与 main.py 的解析器和取值规则对应
-_PRESETS = {
-    "profile_db": ("--profile-db", "QQDUMP_PROFILE_DB"),
-    "nt_msg_db": ("--nt-msg-db", "QQDUMP_NT_MSG_DB"),
-}
 
+def complete_databases(args: argparse.Namespace, databases: list[tuple[str, str]]) -> None:
+    """按 (args 属性名, 数据库文件名) 补全值为 None 的文件参数；显式路径原样保留，不检查存在性。
 
-def complete_databases(args: argparse.Namespace, databases: list[tuple[str, str]], purpose: str = "") -> None:
-    """按 (args 属性名, 数据库文件名) 补全缺省路径；显式路径原样保留，不检查存在性。
-
-    purpose 为需要这些数据库的功能，拼在提示开头，如 "WebUI 功能" 显示为「WebUI 功能需要数据库: ...」。
+    从 args.user、qq、root_dir 选择账号，只解密缺失参数对应的库，成功后填回文件路径。
+    输出账号选择和解密提示，临时目录在进程退出时清理。
+    依赖缺失、取消或解密失败时退出进程；账号密钥不存在时抛 AppError。
     """
     missing = [(attr, name) for attr, name in databases if getattr(args, attr) is None]
     if not missing:
         return
     names = [name for _, name in missing]
+    directory = _decrypt_to_temp(args, names)
+    for attr, name in missing:
+        setattr(args, attr, str(directory / name))
 
-    # 先说明为何进入补全，再执行校验；校验失败时用户仍能看到原因
-    missing_text = ", ".join(f"{err.HL}{name}{err.RESET}" for name in names)
-    flags = "、".join(f"{err.HL}{_PRESETS[attr][0]}{err.RESET}" for attr, _ in missing)
-    envs = "、".join(f"{err.HL}{_PRESETS[attr][1]}{err.RESET}" for attr, _ in missing)
-    print(f"{purpose}需要数据库: {missing_text}\n也可以使用 {flags}、环境变量或 .env 中的 {envs} 预先设置\n", file=sys.stderr)
 
+def _decrypt_to_temp(args: argparse.Namespace, names: list[str]) -> Path:
     as_root = prepare_access(args.root_dir, args.user, decrypting=True)
 
     # 临时数据库优先放在 tmpfs，创建失败时退回系统临时目录；取消选择经 sys.exit 退出时由 atexit 清理
@@ -54,12 +49,12 @@ def complete_databases(args: argparse.Namespace, databases: list[tuple[str, str]
     if not decrypt(record, temp_dir.name, "{filename}", names, as_root=as_root):
         warn_log(f"解密失败: {', '.join(names)}")
         sys.exit(1)
-    for attr, name in missing:
-        out_path = Path(temp_dir.name) / name
-        if not out_path.is_file():
+    directory = Path(temp_dir.name)
+    for name in names:
+        if not (directory / name).is_file():
             warn_log(f"解密失败: {name}")
             sys.exit(1)
-        setattr(args, attr, str(out_path))
+    return directory
 
 
 def _select_account(args: argparse.Namespace, *, as_root: bool) -> dict[str, object]:
