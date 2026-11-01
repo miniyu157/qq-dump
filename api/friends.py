@@ -6,9 +6,13 @@ from typing import NamedTuple
 
 from lib.wire import parse_fields
 from schema import Table
+from schema.buddy_list import buddy_list
+from schema.category_list_v2 import category_list_v2
+from schema.profile_info_adelie import profile_info_adelie
+from schema.profile_info_v6 import profile_info_v6
 
 from .categories import group_names, owner_uid
-from .database import connect, resolve_column, resolve_field, table_map, uid_set
+from .database import connect, resolve_column, resolve_field, uid_set
 
 
 class Friend(NamedTuple):
@@ -64,34 +68,34 @@ class _Related(NamedTuple):
 
 def load_friends(db_path: str) -> list[Friend]:
     """按 rowid 顺序返回 20001 非 0 非 null 的 profile 行，标记好友、非好友与机器人"""
-    table = table_map(db_path, "profile_info_v6")
+    table = profile_info_v6
     columns = _profile_columns(table)
     deletion = columns["deletion_time"]
     where = f"WHERE [{deletion}] IS NOT NULL AND [{deletion}] != 0"
     with connect(db_path) as conn:
-        related = _related(conn, db_path)
+        related = _related(conn)
         return [_build_friend(table, columns, values, related) for values in _profile_rows(conn, table, columns, where)]
 
 
 def load_owner(db_path: str) -> Friend | None:
     """按主人 UID 查询 profile_info_v6，返回主人 Friend；UID 或资料行缺失时返回 None"""
-    table = table_map(db_path, "profile_info_v6")
+    table = profile_info_v6
     columns = _profile_columns(table)
     with connect(db_path) as conn:
-        uid = owner_uid(conn, table_map(db_path, "category_list_v2"))
+        uid = owner_uid(conn, category_list_v2)
         if uid is None:
             return None
         rows = _profile_rows(conn, table, columns, f"WHERE [{columns['uid']}] = ?", (uid,))
         if not rows:
             return None
-        return _build_friend(table, columns, rows[0], _related(conn, db_path), self_profile=True)
+        return _build_friend(table, columns, rows[0], _related(conn), self_profile=True)
 
 
-def _related(conn: sqlite3.Connection, db_path: str) -> _Related:
+def _related(conn: sqlite3.Connection) -> _Related:
     return _Related(
-        buddies=uid_set(conn, table_map(db_path, "buddy_list")),
-        bots=uid_set(conn, table_map(db_path, "profile_info_adelie")),
-        groups=group_names(conn, table_map(db_path, "category_list_v2")),
+        buddies=uid_set(conn, buddy_list),
+        bots=uid_set(conn, profile_info_adelie),
+        groups=group_names(conn, category_list_v2),
     )
 
 

@@ -3,10 +3,8 @@
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
-from pathlib import Path
 
 from schema import Table
-from schema.databases import for_file
 
 from .errors import DatabaseError
 
@@ -25,14 +23,6 @@ def connect(path: str) -> Iterator[sqlite3.Connection]:
         raise DatabaseError(f"无法读取数据库: {path}: {exc}") from exc
     finally:
         conn.close()
-
-
-def table_map(db_path: str, table: str) -> Table:
-    """按库文件名与表名取映射，未登记抛 DatabaseError"""
-    mapping = for_file(db_path, table)
-    if mapping is None:
-        raise DatabaseError(f"未登记的映射: {Path(db_path).name} 中的 {table}，文件名需保持原始库名，如 profile_info.db")
-    return mapping
 
 
 def resolve_column(table: Table, name: str) -> str:
