@@ -1,12 +1,12 @@
 # QQ DUMP + Trowel !
 
-⛏ 全方位友好的 QQNT 数据库转储、消息导出与统计、好友查询、WebUI，以及专为逆向与开发设计的数据库与消息研究分析套件。
+⛏ 全方位友好的 QQNT 数据库到信息一站式流水线：涵盖数据库解密与转储、消息解析与导出、统计分析、好友查询及 WebUI，并提供专为逆向研究与开发设计的数据库和消息研究分析套件。
 
 > 项目已全面升级到 Python，其中的运行时依赖按需使用，均为非强制。  
 > 主分支已重写历史记录，包含旧提交的分支在 *[dbtools 分支](https://github.com/miniyu157/qq-dump/tree/feat/dbtools)* 仍可查看。  
 > 保留内嵌了经典消息导出项目 *[QQRootFastDecrypt](https://github.com/miniyu157/QQRootFastDecrypt)* 的完整代码，已适配此项目架构，可直接运行。
 
-此文档编辑于 2026年10月31日 下午一点  
+此文档编辑于 2026年11月1日 下午三点  
 <s>纯手写文档真的好累呀 T^T</s>
 
 ---
@@ -86,6 +86,30 @@ Legacy 代码虽然较老，除了已做交互适配和适当优化之外，功�
 
 速度是原来的 3-5 倍左右，对比测试与解析器差异详情可以查看 *Protobuf 解析器差异* ([点击跳转](#protobuf-parser-comparison)) 章节。
 
+***Tealina28/QQNT_Export 接入:***
+
+v0.3.0 起可以直接从主菜单运行 [Tealina28/QQNT_Export](https://github.com/Tealina28/QQNT_Export)，一个解析 QQNT 数据库的 Github 仓库。
+该项目的配置入口是 `config.toml`，接入后沿用 QQ DUMP 的账号选择、数据库解密与好友查询，
+把交互结果写回配置再启动它解析与导出，从数据库到导出一次走完，不必手动找库、解密、修改配置。
+
+![t28 导出配置](docs/t28-2.png)
+
+<details>
+<summary>展开详情说明</summary>
+
+> 导出格式、会话类型、c2c 与群过滤、数据线设备都通过 QQ DUMP 交互菜单选择；  
+  c2c 候选来自 QQ DUMP `api/` 模块的好友查询，支持分页与多选。  
+> 选择结果原地写回 `config.toml`，这一步需要 QQ DUMP 自身安装 `tomlkit`。  
+> 配置文件是持久的，每次都能读取上次保存的配置；若上游出现了新的配置在配置文件中，也不会直接覆盖，而是添加到列表中可选择。
+
+![t28 首次运行](docs/t28-1.png)
+
+> 首次运行检查 `tmp/QQNT_Export`，不存在时询问是否浅克隆上游 dev 分支。  
+> `config.toml` 缺失时由 `example.toml` 复制生成；缺少虚拟环境时询问是否创建，创建后询问是否安装 `requirements.txt`。  
+> QQ DUMP 不会自动安装外部项目的依赖。
+
+</details>
+
 ***轻量解析:***
 
 - 消息解析器不使用庞大的 `blackboxprotobuf` 库，也不使用 `google.protobuf`，仓库自带短小精炼的 Protobuf 解析器实现。
@@ -114,6 +138,7 @@ Legacy 代码虽然较老，除了已做交互适配和适当优化之外，功�
 - 除了 Python 以外所有依赖均为可选，按需使用，不自动补全。  
 - 当一个功能 (如 friends 好友查询、legacy 消息导出) 需要数据库但你没有提供文件时，会自动扫描账号并弹出账号选择界面，选择后会解密需要的文件到临时文件夹。
 - 提供数据库文件的方式有很多种，如 `QQDUMP_*` 环境变量、`.env` 文件、CLI 选项 等，了解优先级等详细信息，可以运行 `help` 命令查看帮助信息。
+- CLI 不敷衍，管道数据进出分明，帮助信息与子命令用法完整。
 
 ***CLI 子命令概览:***
 
@@ -125,6 +150,7 @@ Legacy 代码虽然较老，除了已做交互适配和适当优化之外，功�
 | `friends` | 输出好友列表 JSON |
 | `owner` | 输出主人 (数据库持有者) 信息 JSON |
 | `legacy` | 启动经典 Legacy 消息导出 |
+| `t28` | 启动 Tealina28/QQNT_Export 导出 |
 | `check` | 检查运行时依赖状态 |
 | `avatar <uin>` | 使用 QQ API 获取头像并在终端渲染，支持 chafa 与真彩色 ASCII |
 
