@@ -92,6 +92,18 @@ v0.3.0 起可以直接从主菜单运行 [Tealina28/QQNT_Export](https://github.
 该项目的配置入口是 `config.toml`，接入后沿用 QQ DUMP 的账号选择、数据库解密与好友查询，
 把交互结果写回配置再启动它解析与导出，从数据库到导出一次走完，不必手动找库、解密、修改配置。
 
+> 利用 qq-dump 数据库流水线一体化的架构，做了最薄包装，包装器代码: [app/integrations/t28.py](https://github.com/miniyu157/qq-dump/blob/main/app/integrations/t28.py)
+
+> 没有嵌入或修改 QQNT_Export 的任何代码，只经过 qq-dump 预处理流程后，原地修改 toml 正常启动。
+
+用法:
+
+```bash
+./qqdump t28 [--db-dir "/path/to/decrypted_databases"]
+```
+
+> 可以使用 --db-dir 参数跳过解密流程，直接进入配置询问、好友列表选择环节。
+
 ![t28 导出配置](docs/t28-2.png)
 
 <details>
