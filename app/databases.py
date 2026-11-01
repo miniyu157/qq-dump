@@ -4,6 +4,7 @@ import argparse
 import atexit
 import sys
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
 
 from app.accounts import prepare_access
@@ -13,7 +14,7 @@ from app.scripts import decrypt, get_keys, scan_accounts
 from app.utils import cancel_log, warn_log
 from lib.tui.choose import ChoiceCancelled, choose
 
-__all__ = ["complete_databases"]
+__all__ = ["complete_database_dir", "complete_databases"]
 
 
 def complete_databases(args: argparse.Namespace, databases: list[tuple[str, str]]) -> None:
@@ -30,6 +31,19 @@ def complete_databases(args: argparse.Namespace, databases: list[tuple[str, str]
     directory = _decrypt_to_temp(args, names)
     for attr, name in missing:
         setattr(args, attr, str(directory / name))
+
+
+def complete_database_dir(args: argparse.Namespace, *, attr: str, databases: Sequence[str]) -> None:
+    """补全 args 中为 None 的目录参数；显式目录原样保留，不检查或写入该目录。
+
+    databases 指定需解密的库文件名；从 args.user、qq、root_dir 选择账号，输出账号选择和解密提示，
+    将全部指定库解密到同一临时目录后才填回 attr，临时目录在进程退出时清理。
+    依赖缺失、取消或解密失败时退出进程；账号密钥不存在时抛 AppError。
+    """
+    if getattr(args, attr) is not None:
+        return
+    directory = _decrypt_to_temp(args, list(databases))
+    setattr(args, attr, str(directory))
 
 
 def _decrypt_to_temp(args: argparse.Namespace, names: list[str]) -> Path:

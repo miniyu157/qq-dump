@@ -7,8 +7,8 @@ root/ 已存在时拒绝运行；需要重新生成时手动删除 root/。
 账号场景:
   user 0  10001  只有空的数据库目录，rand 为空
   user 0  10002  有数据库但文件头缺少 QQ_NT DB 标记，rand 为空；gpro 文件头无法识别盐值
-  user 10 10003  文件五花八门: 可正常解密的 profile_info.db 与 nt_msg.db、错误密钥、未加密、
-                 空文件、仅文件头、可解密的 gpro 库，以及不参与 glob 的 readme.txt
+  user 10 10003  文件五花八门: 含 35 个好友的可正常解密的 profile_info.db、nt_msg.db 与 group_info.db、
+                 错误密钥、未加密、空文件、仅文件头、可解密的 gpro 库，以及不参与 glob 的 readme.txt
   user 0  异常 uid 标记: 缺少 ### 分隔、uin 为空、uid 为空，均不建数据库目录
 """
 
@@ -74,8 +74,8 @@ def field(number: int, value: int | bytes) -> bytes:
     return varint(number << 3 | 2) + varint(len(value)) + value
 
 
-def write_profile(path: Path, owner_uid: str, owner_uin: int) -> None:
-    """字段号与 schema/ 的映射一致，覆盖好友、已删除好友、机器人、分组与密友关系"""
+def write_profile(path: Path, owner_uid: str, owner_uin: int, friend_count: int) -> None:
+    """字段号与 schema/ 的映射一致，覆盖好友、已删除好友、机器人、分组与密友关系；好友按序号生成"""
     conn = sqlite3.connect(path)
     conn.executescript("""
         CREATE TABLE buddy_list ("1000" TEXT);
@@ -87,7 +87,8 @@ def write_profile(path: Path, owner_uid: str, owner_uin: int) -> None:
             "20014" INTEGER, "20048" INTEGER, "20070" INTEGER, "20072" BLOB, "24103" INTEGER
         );
     """)
-    conn.executemany("INSERT INTO buddy_list VALUES (?)", [("u_friend_a",), ("u_bot_c",)])
+    friends = [f"u_friend_{index:02d}" for index in range(1, friend_count + 1)]
+    conn.executemany("INSERT INTO buddy_list VALUES (?)", [(uid,) for uid in friends] + [("u_bot_c",)])
     conn.execute("INSERT INTO profile_info_adelie VALUES (?)", ("u_bot_c",))
     for group_id, name in ((0, "我的好友"), (1, "同学")):
         group = field(25011, field(25007, group_id) + field(25008, name.encode()))
@@ -95,9 +96,13 @@ def write_profile(path: Path, owner_uid: str, owner_uin: int) -> None:
     lovers = field(20072, field(20074, 1))
     conn.executemany("INSERT INTO profile_info_v6 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
         (owner_uid, None, owner_uin, 0, "主人", 2000, 1, 1, None, "签名", 1, 0, 0, None, 25),
-        ("u_friend_a", "qid_a", 20001, 1700000000, "好友甲", 2001, 2, 3, "备注甲", None, 2, 1, 1314, lovers, 24),
+        ("u_friend_01", "qid_a", 21001, 1700000000, "好友01", 2001, 2, 3, "备注甲", None, 2, 1, 1314, lovers, 24),
         ("u_deleted_b", None, 20002, 1690000000, "已删除乙", 0, 0, 0, None, None, 0, 0, 0, None, 0),
         ("u_bot_c", None, 20003, 1680000000, "机器人丙", 0, 0, 0, None, None, 255, 0, 0, None, 0),
+        *[
+            (uid, None, 21000 + index, 1700000000 + index, f"好友{index:02d}", 0, 0, 0, None, None, 0, 0, 0, None, 0)
+            for index, uid in enumerate(friends[1:], 2)
+        ],
     ])
     conn.commit()
     conn.close()
@@ -107,6 +112,42 @@ def write_msg(path: Path) -> None:
     conn = sqlite3.connect(path)
     conn.execute('CREATE TABLE c2c_msg_table ("40001" INTEGER, "40800" BLOB)')
     conn.execute("INSERT INTO c2c_msg_table VALUES (?, ?)", (1, field(45101, b"hello")))
+    conn.commit()
+    conn.close()
+
+
+def write_group_info(path: Path, owner_uid: str, owner_uin: int) -> None:
+    """字段号取自实机 group_info.db，仅保留群列表、群详情与群成员的常用列，行内容为测试数据"""
+    conn = sqlite3.connect(path)
+    conn.executescript("""
+        CREATE TABLE group_list (
+            "60001" INTEGER PRIMARY KEY, "60004" INTEGER, "60005" INTEGER, "60006" INTEGER,
+            "60007" TEXT, "60026" TEXT
+        );
+        CREATE TABLE group_detail_info_ver1 (
+            "60001" INTEGER PRIMARY KEY, "60002" TEXT, "60004" INTEGER, "60005" INTEGER,
+            "60006" INTEGER, "60007" TEXT, "60026" TEXT
+        );
+        CREATE TABLE group_member3 (
+            "60001" INTEGER, "1000" TEXT, "1001" TEXT, "1002" INTEGER, "20002" TEXT,
+            "64003" TEXT, "64007" INTEGER, "64010" INTEGER, "64016" INTEGER, "64035" INTEGER,
+            PRIMARY KEY ("60001", "1000")
+        );
+    """)
+    conn.executemany("INSERT INTO group_list VALUES (?, ?, ?, ?, ?, ?)", [
+        (30001, 1670000000, 200, 3, "测试群甲", "甲群备注"),
+        (30002, 1680000000, 500, 1, "测试群乙", None),
+    ])
+    conn.executemany("INSERT INTO group_detail_info_ver1 VALUES (?, ?, ?, ?, ?, ?, ?)", [
+        (30001, owner_uid, 1670000000, 200, 3, "测试群甲", None),
+        (30002, owner_uid, 1680000000, 500, 1, "测试群乙", "乙群备注"),
+    ])
+    conn.executemany("INSERT INTO group_member3 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+        (30001, owner_uid, None, owner_uin, "主人", "群主甲", 1670000000, 1, 0, 100),
+        (30001, "u_friend_01", None, 21001, "好友01", "甲卡片", 1670001000, 0, 0, 10),
+        (30001, "u_bot_c", None, 20003, "机器人丙", None, 1670002000, 0, 0, 5),
+        (30002, owner_uid, None, owner_uin, "主人", None, 1680000000, 1, 0, 100),
+    ])
     conn.commit()
     conn.close()
 
@@ -140,13 +181,13 @@ def account(root: Path, user: str, uin: str, uid: str) -> tuple[Path, Path]:
 
 
 def build(root: Path, work: Path) -> None:
-    profile, msg = work / "profile.plain", work / "msg.plain"
+    profile, msg, group = work / "profile.plain", work / "msg.plain", work / "group.plain"
 
     _, db_dir = account(root, "0", "10001", "u_AAAAAAAAAAAAAAAAAAAAAA")
 
     uin, uid = "10002", "u_BBBBBBBBBBBBBBBBBBBBBB"
     _, db_dir = account(root, "0", uin, uid)
-    write_profile(profile, uid, int(uin))
+    write_profile(profile, uid, int(uin), 1)
     write_msg(msg)
     encrypt(profile, db_dir / "profile_info.db", nt_header(None), nt_key(uid, RAND), "HMAC_SHA1")
     encrypt(msg, db_dir / "nt_msg.db", nt_header(None), nt_key(uid, RAND), "HMAC_SHA1")
@@ -157,10 +198,12 @@ def build(root: Path, work: Path) -> None:
     uin, uid = "10003", "u_CCCCCCCCCCCCCCCCCCCCCC"
     _, db_dir = account(root, "10", uin, uid)
     key = nt_key(uid, RAND)
-    write_profile(profile, uid, int(uin))
+    write_profile(profile, uid, int(uin), 35)
     write_msg(msg)
+    write_group_info(group, uid, int(uin))
     encrypt(profile, db_dir / "profile_info.db", nt_header(RAND), key, "HMAC_SHA1")
     encrypt(msg, db_dir / "nt_msg.db", nt_header(RAND), key, "HMAC_SHA1")
+    encrypt(group, db_dir / "group_info.db", nt_header(RAND), key, "HMAC_SHA1")
     encrypt(msg, db_dir / "wrong_key.db", nt_header(RAND), md5("wrong"), "HMAC_SHA1")
     encrypt(msg, db_dir / f"gpro_v1-6_{uid}.db", gpro_header(GPRO_SALT), gpro_key(uin, GPRO_SALT), "HMAC_SHA512")
     (db_dir / "plain.db").write_bytes(nt_header(RAND) + msg.read_bytes())

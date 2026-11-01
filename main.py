@@ -11,9 +11,11 @@ from pathlib import Path
 from api.errors import DatabaseError
 from app.accounts import prepare_access, valid_keys
 from app.ansi import err, out
-from app.databases import complete_databases
+from app.databases import complete_database_dir, complete_databases
 from app.env import flag_setting, path_setting
 from app.errors import AppError
+from app.integrations.t28 import check_environment as check_t28_environment
+from app.integrations.t28 import run as run_t28
 from app.output import render_json
 from app.scripts import decrypt, get_keys, set_sudo_notice, set_verbose
 from app.utils import cancel_log, require_binaries, require_modules, warn_log
@@ -144,6 +146,20 @@ def cmd_legacy(args: argparse.Namespace) -> None:
     raise SystemExit(proc.returncode)
 
 
+def cmd_tealina28_qqnt_export(args: argparse.Namespace) -> None:
+    """检查外部项目环境，补全缺省的数据库目录后启动 t28，传播导出器退出码。"""
+    check_t28_environment()
+    if args.db_dir is None:
+        names = ", ".join(f"{err.HL}{name}{err.RESET}" for name in ("profile_info.db", "nt_msg.db", "group_info.db"))
+        print(f"Tealina28/QQNT_Export 功能需要数据库: {names}\n也可以使用 {err.HL}--db-dir{err.RESET} 预先设置数据库目录\n", file=sys.stderr)
+    complete_database_dir(
+        args,
+        attr="db_dir",
+        databases=["profile_info.db", "nt_msg.db", "group_info.db"],
+    )
+    raise SystemExit(run_t28(db_dir=args.db_dir, output_dir=args.output_dir))
+
+
 def cmd_check(args: argparse.Namespace) -> None:
     """检查运行时依赖，按二进制与 Python 模块分类列出结果；依赖均为可选，缺失不影响退出码。"""
     binaries = (
@@ -156,6 +172,7 @@ def cmd_check(args: argparse.Namespace) -> None:
     modules = (
         ("pillow", "PIL", "运行 avatar 渲染头像时需要"),
         ("rich", "rich", "仅 Table2d 研究套件需要"),
+        ("tomlkit", "tomlkit", "运行 Tealina28/QQNT_Export 导出时需要"),
     )
     groups = (
         ("二进制依赖", [(name, purpose, shutil.which(name) is not None) for name, purpose in binaries]),
@@ -186,8 +203,9 @@ def cmd_menu(args: argparse.Namespace) -> None:
         f"{err.BOLD}{err.INFO}今天想要做些什么?{err.RESET}"
     )
     menu = (
-        (f"运行 WebUI 服务器 {err.FAINT}(需要数据库文件){err.RESET}", cmd_web),
-        (f"运行 Legacy 消息导出 {err.FAINT}(需要数据库文件){err.RESET}", cmd_legacy),
+        ("运行 WebUI 服务器", cmd_web),
+        ("运行 Legacy 消息导出", cmd_legacy),
+        ("运行 Tealina28/QQNT_Export", cmd_tealina28_qqnt_export),
         ("查看 CLI 帮助", cmd_help),
         ("运行依赖检查", cmd_check),
     )
@@ -219,7 +237,7 @@ def help_text() -> str:
     return f"""{out.BOLD}QQ DUMP -- 从 NTQQ 数据库得到信息{out.RESET}
 {styled_version(out)}
 
-  {out.FAINT}tip: 所需的数据库文件 (-p/-n) 未提供时，
+  {out.FAINT}tip: 所需的数据库文件 (-p/-n) 或目录 (--db-dir) 未提供时，
   会显示账号选择界面，并即时解密补齐。{out.RESET}
 
 {_title}用法:{out.RESET}
@@ -246,6 +264,8 @@ def help_text() -> str:
   {out.HL}owner{out.RESET} {out.FAINT}[-p]{out.RESET}                            输出主人信息
   {out.HL}l, legacy{out.RESET} {out.FAINT}[-o] [-n] [-p]{out.RESET}              启动 legacy 菜单
     {out.BOLD}--blackboxprotobuf{out.RESET}                  使用旧 protobuf 解析器
+  {out.HL}t28, Tealina28-QQNT_Export{out.RESET} {out.FAINT}[-o]{out.RESET}       Tealina28/QQNT_Export 消息导出
+    {out.BOLD}--db-dir <目录>{out.RESET}                     数据库目录
 
 {_title}子命令 (其它):{out.RESET}
   {out.HL}menu{out.RESET}                                  显示主菜单
@@ -334,6 +354,9 @@ def main() -> None:
     legacy_parser = sub.add_parser("legacy", aliases=["l"], parents=[common])
     legacy_parser.add_argument("--blackboxprotobuf", action="store_true")
     legacy_parser.set_defaults(func=cmd_legacy)
+    t28_parser = sub.add_parser("Tealina28-QQNT_Export", aliases=["t28"], parents=[common])
+    t28_parser.add_argument("--db-dir")
+    t28_parser.set_defaults(func=cmd_tealina28_qqnt_export)
     sub.add_parser("help", parents=[common]).set_defaults(func=cmd_help)
     sub.add_parser("menu", parents=[common]).set_defaults(func=cmd_menu)
 
@@ -352,6 +375,7 @@ def main() -> None:
     verbose = getattr(args, "verbose", None)
     set_verbose(read_flag("QQDUMP_VERBOSE") if verbose is None else verbose)
     args.output_dir = getattr(args, "output_dir", ".")
+    args.db_dir = getattr(args, "db_dir", None)
 
     try:
         args.func(args)
