@@ -16,7 +16,7 @@ from .database import connect, resolve_column, resolve_field, uid_set
 
 
 class Friend(NamedTuple):
-    """好友信息快照；gender 保留原始值，gender_name、密友关系与分组为映射名称；is_friend 由 buddy_list 判定，deletion_time 仅非好友取 20001 时间戳；主人自身固定为非好友且无删除时间"""
+    """好友信息快照；gender 保留原始值，gender_name、密友关系与分组为映射名称；is_friend 由 buddy_list 判定，deletion_time 仅非好友取 20001 时间戳"""
 
     uid: str
     uin: int | None
@@ -88,7 +88,7 @@ def load_owner(db_path: str) -> Friend | None:
         rows = _profile_rows(conn, table, columns, f"WHERE [{columns['uid']}] = ?", (uid,))
         if not rows:
             return None
-        return _build_friend(table, columns, rows[0], _related(conn), self_profile=True)
+        return _build_friend(table, columns, rows[0], _related(conn))
 
 
 def _related(conn: sqlite3.Connection) -> _Related:
@@ -111,10 +111,10 @@ def _profile_rows(conn: sqlite3.Connection, table: Table, columns: Mapping[str, 
     return [dict(zip(FIELDS, row)) for row in conn.execute(sql, params)]
 
 
-def _build_friend(table: Table, columns: Mapping[str, str], values: Mapping[str, object], related: _Related, *, self_profile: bool = False) -> Friend:
-    """把 profile 行转换为 Friend；self_profile 为主人自身，固定非好友且无删除时间"""
+def _build_friend(table: Table, columns: Mapping[str, str], values: Mapping[str, object], related: _Related) -> Friend:
+    """把 profile 行转换为 Friend"""
     uid = values["uid"]
-    is_friend = False if self_profile else uid in related.buddies
+    is_friend = uid in related.buddies
     return Friend(
         uid=uid,
         uin=values["uin"],
@@ -134,7 +134,7 @@ def _build_friend(table: Table, columns: Mapping[str, str], values: Mapping[str,
         group_name=related.groups.get(values["group_id"]),
         is_friend=is_friend,
         is_bot=uid in related.bots,
-        deletion_time=None if self_profile or is_friend else values["deletion_time"] or None,
+        deletion_time=None if is_friend else values["deletion_time"] or None,
     )
 
 
