@@ -5,17 +5,15 @@ as_root 由调用方决定。
 """
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import NoReturn
 
 from app.ansi import err
 from app.errors import AppError
-from app.utils import danger_log, info_log, require_binaries, warn_log
+from app.utils import danger_log, require_binaries
 
-__all__ = ["decrypt", "get_keys", "qq_data_accessible", "require_qq_data", "scan_accounts", "set_sudo_notice", "set_verbose"]
+__all__ = ["decrypt", "get_keys", "scan_accounts", "set_sudo_notice", "set_verbose"]
 
 # 由入口按 --sudo-notice 设置，_run 提权前据此决定是否输出提示
 _sudo_notice = False
@@ -24,51 +22,6 @@ _sudo_notice = False
 _verbose = False
 
 _CLI_DIR = Path(__file__).resolve().parents[1] / "cli"
-
-
-def require_qq_data(root_dir: str | None, user: str | None) -> None:
-    """QQ 应用数据目录确定不存在时中止；无法读取时不拦截。"""
-    users = Path(root_dir or "/").expanduser() / "data" / "user"
-    target = users / (user or "*") / "com.tencent.mobileqq"
-
-    if user is not None:
-        candidates = [target]
-    else:
-        try:
-            candidates = [path / "com.tencent.mobileqq" for path in users.iterdir()]
-        except (FileNotFoundError, NotADirectoryError):
-            candidates = []
-        except OSError:
-            return
-
-    unknown = False
-    for candidate in candidates:
-        try:
-            candidate.stat()
-            return
-        except (FileNotFoundError, NotADirectoryError):
-            continue
-        except OSError:
-            unknown = True
-    if not unknown:
-        _qq_data_error(target)
-
-
-def qq_data_accessible(root_dir: str | None, user: str | None) -> bool:
-    """当前身份能否直接读取 QQ 数据目录。"""
-    if os.geteuid() == 0:
-        return True
-
-    users = Path(root_dir or "/").expanduser() / "data" / "user"
-    if user is not None:
-        qq_dirs = [users / user / "com.tencent.mobileqq"]
-    else:
-        try:
-            qq_dirs = [path / "com.tencent.mobileqq" for path in users.iterdir()]
-        except OSError:
-            return False
-
-    return bool(qq_dirs) and all(_can_read(path) for path in qq_dirs)
 
 
 def scan_accounts(user: str | None, qq: str | None, root_dir: str | None, *, as_root: bool) -> list[dict[str, object]]:
@@ -94,24 +47,6 @@ def decrypt(record: dict[str, object], output_dir: str, name_format: str, files:
     command += ["-o", output_dir, "-f", name_format, *files]
     label = f"正在解密账号 {record['user']}.{record['uin']} 的 {err.HL}{' '.join(files) or '全部数据库文件'}{err.RESET}"
     return _run(command, as_root=as_root, label=label).returncode == 0
-
-
-def _qq_data_error(target: Path) -> NoReturn:
-    """输出 QQ 数据目录缺失的错误与根目录提示，并退出。"""
-    warn_log(f"QQ 数据目录不存在: {target}")
-    info_log(f"或许可以使用 {err.HL}--root-dir{err.RESET}、环境变量或 .env 中的 {err.HL}QQDUMP_ROOT_DIR{err.RESET} 设置根目录")
-    sys.exit(1)
-
-
-def _can_read(qq_dir: Path) -> bool:
-    """判断 QQ 目录下的账号目录是否可读。"""
-    try:
-        with os.scandir(qq_dir / "files" / "uid"):
-            return True
-    except FileNotFoundError:
-        return os.access(qq_dir, os.R_OK | os.X_OK)
-    except OSError:
-        return False
 
 
 def _script(name: str) -> list[str]:
