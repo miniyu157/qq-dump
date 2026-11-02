@@ -1,26 +1,15 @@
 #!/usr/bin/env python3
 import argparse
-import importlib.util
 import re
-import shutil
 import subprocess
 import sys
-from collections.abc import Sequence
 from pathlib import Path
 
 from api.errors import DatabaseError
-from app.accounts import prepare_access, valid_keys
 from app.ansi import err, out
-from app.databases import complete_database_dir, complete_databases
-from app.env import flag_setting, path_setting
 from app.errors import AppError
-from app.integrations.t28 import check_environment as check_t28_environment
-from app.integrations.t28 import run as run_t28
-from app.output import render_json
-from app.scripts import decrypt, get_keys, set_sudo_notice, set_verbose
 from app.utils import cancel_log, require_binaries, require_modules, warn_log
 from app.version import version
-from lib.tui.choose import ChoiceCancelled, choose
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -28,31 +17,21 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 VERSION_TAG = re.compile(r"v\d+(?:\.\d+)*(?=$|[- ])")
 
 
-_DATABASE_HINTS = {
-    "profile_db": ("--profile-db", "QQDUMP_PROFILE_DB"),
-    "nt_msg_db": ("--nt-msg-db", "QQDUMP_NT_MSG_DB"),
-}
-
-
-def _print_database_hint(args: argparse.Namespace, databases: Sequence[tuple[str, str]], *, purpose: str = "") -> None:
-    """向 stderr 说明缺失的数据库及对应 CLI、环境变量入口，不执行补全。"""
-    missing = [(attr, name) for attr, name in databases if getattr(args, attr) is None]
-    if not missing:
-        return
-    names = ", ".join(f"{err.HL}{name}{err.RESET}" for _, name in missing)
-    flags = "、".join(f"{err.HL}{_DATABASE_HINTS[attr][0]}{err.RESET}" for attr, _ in missing)
-    envs = "、".join(f"{err.HL}{_DATABASE_HINTS[attr][1]}{err.RESET}" for attr, _ in missing)
-    print(f"{purpose}需要数据库: {names}\n也可以使用 {flags}、环境变量或 .env 中的 {envs} 预先设置\n", file=sys.stderr)
-
-
 def cmd_key(args: argparse.Namespace) -> None:
     """输出可用的密钥记录；被跳过的账号由 get_keys.py 警告，不影响退出码。"""
+    from app.accounts import prepare_access, valid_keys
+    from app.output import render_json
+    from app.scripts import get_keys
+
     as_root = prepare_access(args.root_dir, args.user, decrypting=False)
     render_json(valid_keys(get_keys(args.user, args.qq, args.root_dir, as_root=as_root)))
 
 
 def cmd_db(args: argparse.Namespace) -> None:
     """获取密钥，再逐账号解密。"""
+    from app.accounts import prepare_access, valid_keys
+    from app.scripts import decrypt, get_keys
+
     as_root = prepare_access(args.root_dir, args.user, decrypting=True)
     records = valid_keys(get_keys(args.user, args.qq, args.root_dir, as_root=as_root))
 
@@ -100,8 +79,10 @@ def cmd_avatar(args: argparse.Namespace) -> None:
 
 def cmd_web(args: argparse.Namespace) -> None:
     """启动本地 WebUI。"""
+    from app.databases import complete_databases, print_database_hint
+
     databases = [("profile_db", "profile_info.db")]
-    _print_database_hint(args, databases, purpose="WebUI 功能")
+    print_database_hint(args, databases, purpose="WebUI 功能")
     complete_databases(args, databases)
 
     from web.server import serve
@@ -111,8 +92,11 @@ def cmd_web(args: argparse.Namespace) -> None:
 
 def cmd_friends(args: argparse.Namespace) -> None:
     """输出好友 JSON。"""
+    from app.databases import complete_databases, print_database_hint
+    from app.output import render_json
+
     databases = [("profile_db", "profile_info.db")]
-    _print_database_hint(args, databases)
+    print_database_hint(args, databases)
     complete_databases(args, databases)
 
     from api import load_friends
@@ -122,8 +106,11 @@ def cmd_friends(args: argparse.Namespace) -> None:
 
 def cmd_owner(args: argparse.Namespace) -> None:
     """输出主人信息。"""
+    from app.databases import complete_databases, print_database_hint
+    from app.output import render_json
+
     databases = [("profile_db", "profile_info.db")]
-    _print_database_hint(args, databases)
+    print_database_hint(args, databases)
     complete_databases(args, databases)
 
     from api import load_owner
@@ -134,8 +121,10 @@ def cmd_owner(args: argparse.Namespace) -> None:
 
 def cmd_legacy(args: argparse.Namespace) -> None:
     """补全缺失数据库后启动 legacy。"""
+    from app.databases import complete_databases, print_database_hint
+
     databases = [("profile_db", "profile_info.db"), ("nt_msg_db", "nt_msg.db")]
-    _print_database_hint(args, databases, purpose="Legacy 功能")
+    print_database_hint(args, databases, purpose="Legacy 功能")
     complete_databases(args, databases)
 
     legacy_main = SCRIPT_DIR / "legacy-cli" / "main.py"
@@ -148,6 +137,10 @@ def cmd_legacy(args: argparse.Namespace) -> None:
 
 def cmd_tealina28_qqnt_export(args: argparse.Namespace) -> None:
     """检查外部项目环境，补全缺省的数据库目录后启动 t28，传播导出器退出码。"""
+    from app.databases import complete_database_dir
+    from app.integrations.t28 import check_environment as check_t28_environment
+    from app.integrations.t28 import run as run_t28
+
     check_t28_environment()
     if args.db_dir is None:
         names = ", ".join(f"{err.HL}{name}{err.RESET}" for name in ("profile_info.db", "nt_msg.db", "group_info.db"))
@@ -162,6 +155,9 @@ def cmd_tealina28_qqnt_export(args: argparse.Namespace) -> None:
 
 def cmd_check(args: argparse.Namespace) -> None:
     """检查运行时依赖，按二进制与 Python 模块分类列出结果；依赖均为可选，缺失不影响退出码。"""
+    import importlib.util
+    import shutil
+
     binaries = (
         ("sudo", "QQ 数据不可访问时需要"),
         ("sqlcipher", "解密数据库时需要"),
@@ -197,6 +193,8 @@ def cmd_help(args: argparse.Namespace) -> None:
 
 def cmd_menu(args: argparse.Namespace) -> None:
     """无子命令时显示主菜单。"""
+    from lib.tui.choose import ChoiceCancelled, choose
+
     title = (
         f"{err.BOLD}QQ DUMP TUI{err.RESET} {styled_version(err)}{err.RESET}\n"
         f"{err.PINK}https://github.com/miniyu157/qq-dump{err.RESET}\n\n"
@@ -315,6 +313,9 @@ class HelpParser(argparse.ArgumentParser):
 
 def main() -> None:
     """程序入口：装配解析器并分发到对应子命令。"""
+    from app.config import resolve_options
+    from app.scripts import set_sudo_notice, set_verbose
+
     common = argparse.ArgumentParser(add_help=False)
     # 公共选项可位于子命令前后；SUPPRESS 防止子解析器默认值覆盖此前已解析的取值
     common.add_argument("-u", "--user", default=argparse.SUPPRESS)
@@ -361,21 +362,9 @@ def main() -> None:
     sub.add_parser("menu", parents=[common]).set_defaults(func=cmd_menu)
 
     args = parser.parse_args()
-    args.user = getattr(args, "user", None)
-    args.qq = getattr(args, "qq", None)
-    # 优先级: CLI > 进程环境变量 > .env；-E 跳过环境配置，保留 CLI 输入。
-    ignore_env = getattr(args, "ignore_env", False)
-    read_path = (lambda name: None) if ignore_env else path_setting
-    read_flag = (lambda name: False) if ignore_env else flag_setting
-    args.root_dir = getattr(args, "root_dir", None) or read_path("QQDUMP_ROOT_DIR")
-    args.profile_db = getattr(args, "profile_db", None) or read_path("QQDUMP_PROFILE_DB")
-    args.nt_msg_db = getattr(args, "nt_msg_db", None) or read_path("QQDUMP_NT_MSG_DB")
-    sudo_notice = getattr(args, "sudo_notice", None)
-    set_sudo_notice(read_flag("QQDUMP_SUDO_NOTICE") if sudo_notice is None else sudo_notice)
-    verbose = getattr(args, "verbose", None)
-    set_verbose(read_flag("QQDUMP_VERBOSE") if verbose is None else verbose)
-    args.output_dir = getattr(args, "output_dir", ".")
-    args.db_dir = getattr(args, "db_dir", None)
+    resolve_options(args)
+    set_sudo_notice(args.sudo_notice)
+    set_verbose(args.verbose)
 
     try:
         args.func(args)

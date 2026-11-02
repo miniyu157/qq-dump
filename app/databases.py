@@ -14,7 +14,23 @@ from app.scripts import decrypt, get_keys, scan_accounts
 from app.utils import cancel_log, warn_log
 from lib.tui.choose import ChoiceCancelled, choose
 
-__all__ = ["complete_database_dir", "complete_databases"]
+__all__ = ["complete_database_dir", "complete_databases", "print_database_hint"]
+
+_DATABASE_HINTS = {
+    "profile_db": ("--profile-db", "QQDUMP_PROFILE_DB"),
+    "nt_msg_db": ("--nt-msg-db", "QQDUMP_NT_MSG_DB"),
+}
+
+
+def print_database_hint(args: argparse.Namespace, databases: Sequence[tuple[str, str]], *, purpose: str = "") -> None:
+    """向 stderr 说明缺失的数据库及对应 CLI、环境变量入口，不执行补全。"""
+    missing = [(attr, name) for attr, name in databases if getattr(args, attr) is None]
+    if not missing:
+        return
+    names = ", ".join(f"{err.HL}{name}{err.RESET}" for _, name in missing)
+    flags = "、".join(f"{err.HL}{_DATABASE_HINTS[attr][0]}{err.RESET}" for attr, _ in missing)
+    envs = "、".join(f"{err.HL}{_DATABASE_HINTS[attr][1]}{err.RESET}" for attr, _ in missing)
+    print(f"{purpose}需要数据库: {names}\n也可以使用 {flags}、环境变量或 .env 中的 {envs} 预先设置\n", file=sys.stderr)
 
 
 def complete_databases(args: argparse.Namespace, databases: list[tuple[str, str]]) -> None:
