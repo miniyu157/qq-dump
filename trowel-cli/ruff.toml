@@ -1,0 +1,4 @@
+extend = "../ruff.toml"
+
+[lint.isort]
+known-first-party = ["cmds", "db", "lib", "mapping", "maps", "render"]
