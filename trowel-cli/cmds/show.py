@@ -1,4 +1,4 @@
-"""show: 按 rowid 升序渲染 -t 指定的整张表。"""
+"""--show: 按 rowid 升序渲染指定的整张表。"""
 
 import argparse
 import sqlite3

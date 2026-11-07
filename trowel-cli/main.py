@@ -1,51 +1,43 @@
 #!/usr/bin/env python3
 """Trowel: 查看已解密 SQLite 数据库的表与列。"""
 
-import argparse
 import sys
-from pathlib import Path
 
+from app.usage import parse_args, print_database_operations, print_databases, print_table_operations, usage_error
 from cmds import list_columns, show, tables
+from config.catalog import available_databases, available_tables
+from config.dotfile import load_config, resolve_db
 from db.connection import is_sqlite_file, open_readonly
+from db.schema import columns, table_names
 
-
-def _non_negative(raw: str) -> int:
-    if not raw.isdigit():
-        raise argparse.ArgumentTypeError(f"应为非负整数: {raw}")
-    return int(raw)
+# 键与 app.usage 中的操作名一致
+_RUNS = {"tables": tables.run, "list-columns": list_columns.run, "show": show.run}
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="main.py", description="查看已解密 SQLite 数据库的表与列。")
-    parser.add_argument("-d", "--db", type=Path, metavar="<file>", help="要读取的数据库文件")
-    parser.add_argument("-t", "--table", metavar="<table>", help="要查看的表")
-    form = parser.add_mutually_exclusive_group()
-    form.add_argument("-k", "--kv", dest="form", action="store_const", const="kv", help="输出为键值对")
-    form.add_argument("-j", "--json", dest="form", action="store_const", const="json", help="输出为 JSON")
-    parser.set_defaults(form="table", needs_table=False)
-    sub = parser.add_subparsers(dest="command", title="子命令", metavar="<subcommand>")
-    sub.add_parser("tables", help="列出所有表及行数").set_defaults(func=tables.run)
-    sub.add_parser("list-columns", help="列出 -t 指定的表里的列").set_defaults(func=list_columns.run, needs_table=True)
-    show_parser = sub.add_parser("show", help="按 rowid 升序渲染 -t 指定的整张表")
-    show_parser.add_argument("-l", "--last", type=_non_negative, metavar="N", help="只取末尾 N 行")
-    show_parser.add_argument("-C", "--columns", nargs="?", const="uhd", type=show.parse_statuses, action="append", metavar="uhd", help="另外显示未定义 (u)、已隐藏 (h)、已丢弃 (d) 的列，省略后缀时全部显示")
-    show_parser.add_argument("-P", "--fields", nargs="?", const="uhd", type=show.parse_statuses, action="append", metavar="uhd", help="protobuf 字段的显示范围，尚未生效")
-    show_parser.add_argument("-n", "--name", action="store_true", help="列名后附加 maps 中的语义名称")
-    show_parser.add_argument("-q", "--no-summary", action="store_true", help="不显示末尾的摘要")
-    show_parser.set_defaults(func=show.run, needs_table=True)
-    args = parser.parse_args()
-
-    if args.command is None:
-        parser.print_help()
-        sys.exit(2)
+    args = parse_args()
+    config = load_config()
     if args.db is None:
-        parser.error("需要 -d 指定数据库")
-    if not is_sqlite_file(args.db):
-        parser.error(f"不是 SQLite 数据库文件: {args.db}")
-    if args.needs_table and args.table is None:
-        parser.error(f"{args.command} 需要 -t 指定表")
+        print_databases(available_databases(config))
+        sys.exit(2)
 
-    args.func(open_readonly(args.db), args)
+    args.db = resolve_db(config, args.db)
+    if args.table is not None:
+        args.table = config.table_aliases.get(args.table, args.table)
+    if not is_sqlite_file(args.db):
+        usage_error(f"不是 SQLite 数据库文件: {args.db}")
+    conn = open_readonly(args.db)
+
+    if args.operation is None:
+        if args.table is None:
+            print_database_operations(args.db.name, available_tables(config, table_names(conn)))
+        elif not columns(conn, args.table):
+            sys.exit(f"表不存在: {args.table}")
+        else:
+            print_table_operations(args.table)
+        sys.exit(2)
+
+    _RUNS[args.operation](conn, args)
 
 
 if __name__ == "__main__":

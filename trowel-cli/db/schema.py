@@ -5,7 +5,7 @@ from typing import NamedTuple
 
 from db._sql import quote_identifier
 
-__all__ = ["ColumnInfo", "TableInfo", "columns", "tables"]
+__all__ = ["ColumnInfo", "TableInfo", "columns", "table_names", "tables"]
 
 
 class TableInfo(NamedTuple):
@@ -22,10 +22,14 @@ class ColumnInfo(NamedTuple):
     pk: int
 
 
+def table_names(conn: sqlite3.Connection) -> list[str]:
+    """主库的表与虚拟表，按名称排序，不统计行数。FTS 影子表的 type 为 shadow，不在其中。"""
+    return [row[0] for row in conn.execute("SELECT name FROM pragma_table_list WHERE schema = 'main' AND type IN ('table', 'virtual') AND substr(name, 1, 7) <> 'sqlite_' ORDER BY name")]
+
+
 def tables(conn: sqlite3.Connection) -> list[TableInfo]:
-    """主库的表与虚拟表及其行数，按名称排序。FTS 影子表的 type 为 shadow，不在其中。"""
-    names = [row[0] for row in conn.execute("SELECT name FROM pragma_table_list WHERE schema = 'main' AND type IN ('table', 'virtual') AND substr(name, 1, 7) <> 'sqlite_' ORDER BY name")]
-    return [TableInfo(name, conn.execute(f"SELECT count(*) FROM {quote_identifier(name)}").fetchone()[0]) for name in names]
+    """table_names 中的表及其行数。"""
+    return [TableInfo(name, conn.execute(f"SELECT count(*) FROM {quote_identifier(name)}").fetchone()[0]) for name in table_names(conn)]
 
 
 def columns(conn: sqlite3.Connection, table: str) -> list[ColumnInfo]:

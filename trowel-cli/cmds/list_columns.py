@@ -1,4 +1,4 @@
-"""list-columns: 列出 -t 指定的表里的列及其映射状态。"""
+"""--list-columns: 列出指定表里的列及其映射状态。"""
 
 import argparse
 import sqlite3
