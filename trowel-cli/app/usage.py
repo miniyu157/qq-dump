@@ -11,6 +11,7 @@ from typing import NamedTuple, NoReturn
 from rich.console import Console
 from rich.text import Text
 
+from app.dotfile import is_alias_name
 from cmds.show import parse_statuses
 
 __all__ = ["fail", "parse_args", "print_table_operations", "usage_error"]
@@ -33,6 +34,13 @@ _HELP = r"""[bold]TROWEL -- 开始探索数据库[/]
 [bold underline]操作 (工作区):[/]
   [bold dim sky_blue2]+list-files[/]               列出工作区与当前文件夹下可用的数据库，
                             以及数据库别名 [dim](默认)[/]
+  [bold pink1]+alias[/] <命令>             查看与管理 .trowel 中的别名
+    [bold]ls[/]                      列出生效的别名与目标，校验数据库别名的目标
+    [bold]db-add[/] <alias>=<db> ... 添加或改写数据库别名，目标须为 SQLite 数据库
+    [bold]db-del[/] <alias> ...      删除数据库别名
+    [bold]table-add[/] <alias>=<table> ...
+                            添加或改写表别名
+    [bold]table-del[/] <alias> ...   删除表别名
 
 [bold underline]操作 (数据库):[/]
   [bold dim sky_blue2]+preview-tables[/]           列出库中的表与表别名 [dim](默认)[/]
@@ -86,6 +94,43 @@ def _add_show(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-q", "--no-summary", action="store_true")
 
 
+def _alias_pair(raw: str) -> tuple[str, str]:
+    alias, separator, target = raw.partition("=")
+    if not separator or not target or not is_alias_name(alias):
+        raise argparse.ArgumentTypeError(f"应为 <alias>=<目标>，alias 只能由字母、数字与下划线组成: {raw}")
+    return alias, target
+
+
+def _alias_name(raw: str) -> str:
+    if not is_alias_name(raw):
+        raise argparse.ArgumentTypeError(f"alias 只能由字母、数字与下划线组成: {raw}")
+    return raw
+
+
+class _Command(NamedTuple):
+    arguments: str
+    help: str
+
+
+_ALIAS_USAGE = r"[bold]trowel[/] \[选项] [bold pink1]+alias[/] <命令> \[参数]"
+_ALIAS_COMMANDS = {
+    "ls": _Command("", "列出生效的别名与目标，校验数据库别名的目标"),
+    "db-add": _Command("<alias>=<db> ...", "添加或改写数据库别名，目标须为 SQLite 数据库"),
+    "db-del": _Command("<alias> ...", "删除数据库别名"),
+    "table-add": _Command("<alias>=<table> ...", "添加或改写表别名"),
+    "table-del": _Command("<alias> ...", "删除表别名"),
+}
+
+
+def _add_alias(parser: argparse.ArgumentParser) -> None:
+    """未指定命令时 command 为 None，由 parse_args 打印可用的命令。"""
+    commands = parser.add_subparsers(dest="command", parser_class=_Parser)
+    commands.add_parser("ls")
+    for kind in ("db", "table"):
+        commands.add_parser(f"{kind}-add").add_argument("pairs", nargs="+", type=_alias_pair)
+        commands.add_parser(f"{kind}-del").add_argument("aliases", nargs="+", type=_alias_name)
+
+
 class _Level(NamedTuple):
     """default 为未指定操作时执行的操作名，None 表示必须指定操作。"""
 
@@ -108,6 +153,7 @@ class _Operation(NamedTuple):
 
 _OPERATIONS = {
     "list-files": _Operation(level=0, help="列出工作区与当前文件夹下可用的数据库，以及数据库别名", arguments=None),
+    "alias": _Operation(level=0, help="查看与管理 .trowel 中的别名", arguments=_add_alias),
     "preview-tables": _Operation(level=1, help="列出库中的表与表别名", arguments=None),
     "tables": _Operation(level=1, help="查看所有表和行数，以知识覆盖进行着色", arguments=_add_form),
     "list-columns": _Operation(level=2, help="列出表里的列，以知识覆盖进行着色", arguments=_add_form),
@@ -132,8 +178,8 @@ def _print_message(console: Console, message: str) -> None:
     console.print(Text.assemble(f"{_PROG}: ", ("错误:", "bold red"), f" {message}"))
 
 
-def _print_error(console: Console, message: str) -> None:
-    console.print(f"[bold]用法:[/] {_USAGE}")
+def _print_error(console: Console, message: str, *, usage: str = _USAGE) -> None:
+    console.print(f"[bold]用法:[/] {usage}")
     _print_message(console, message)
 
 
@@ -202,6 +248,9 @@ def parse_args() -> argparse.Namespace:
     if operation.arguments is not None:
         operation.arguments(operation_parser)
     operation_parser.parse_args(rest, namespace=args)
+    if name == "alias" and args.command is None:
+        _print_alias_commands()
+        sys.exit(2)
     args.operation = name
     return args
 
@@ -216,5 +265,20 @@ def print_table_operations(table: str) -> None:
     console.print(Text.assemble("表 ", (table, "bold pink1"), " 可用的操作:", style="bold"))
     for flag, operation in available.items():
         console.print(Text.assemble("  ", (flag, "bold"), " " * (width - len(flag)), operation.help))
+    console.print()
+    console.print(Text(f"使用 {_PROG} -h 查看完整帮助。", style="dim"))
+
+
+def _print_alias_commands() -> None:
+    """向 stderr 打印 +alias 的用法行、缺少命令的错误，以及可用的命令。"""
+    console = _stderr()
+    spellings = {name: f"{name} {command.arguments}".rstrip() for name, command in _ALIAS_COMMANDS.items()}
+    width = max(len(spelling) for spelling in spellings.values()) + 4
+    _print_error(console, "+alias 缺少命令", usage=_ALIAS_USAGE)
+    console.print()
+    console.print(Text.assemble(("+alias", "bold pink1"), " 可用的命令:", style="bold"))
+    for name, command in _ALIAS_COMMANDS.items():
+        padding = " " * (width - len(spellings[name]))
+        console.print(Text.assemble("  ", (name, "bold"), f" {command.arguments}".rstrip(), padding, command.help))
     console.print()
     console.print(Text(f"使用 {_PROG} -h 查看完整帮助。", style="dim"))

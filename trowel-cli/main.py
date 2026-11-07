@@ -5,11 +5,11 @@ import sys
 
 from app.dotfile import ConfigError, load_config, resolve_db
 from app.usage import fail, parse_args, print_table_operations, usage_error
-from cmds import list_columns, list_files, preview_tables, show, tables
+from cmds import alias, list_columns, list_files, preview_tables, show, tables
 from db.connection import is_sqlite_file, open_readonly
 from db.schema import MissingTable, require_table
 
-# 键与 app.usage 中的操作名一致；+list-files 与 +preview-tables 需要配置，在 main 中单独调用
+# 键与 app.usage 中的操作名一致；+list-files、+alias 与 +preview-tables 需要配置，在 main 中单独调用
 _RUNS = {"tables": tables.run, "list-columns": list_columns.run, "show": show.run}
 
 
@@ -18,6 +18,9 @@ def main() -> None:
     config = load_config()
     if args.operation == "list-files":
         list_files.run(config)
+        return
+    if args.operation == "alias":
+        alias.run(config, args)
         return
 
     args.db = resolve_db(config, args.db)
