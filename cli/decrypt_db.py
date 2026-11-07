@@ -58,8 +58,9 @@ PROGRESS_INTERVAL = 1
 COPY_CHUNK = 16 * 1024 * 1024
 MIB = 1024 * 1024
 
-# integrity_check 对锁页的报告，父指针位于某个 cell 或页头的右子指针
-LOCK_REF_RE = re.compile(rf"page (\d+) (?:cell (\d+)|(right child)): 2nd reference to page {LOCK_PAGE}\b")
+# quick_check 对锁页的报告: 带 Tree 前缀时父指针位于某个 cell 或页头的右子指针，Freelist 前缀表示锁页在空闲列表，无前缀表示锁页是根页
+LOCK_REF = f"2nd reference to page {LOCK_PAGE}"
+LOCK_REF_RE = re.compile(rf"page (\d+) (?:cell (\d+)|(right child)): {LOCK_REF}$")
 
 
 def db_cipher(filename: str, key: str | None, gpro_key: str | None) -> tuple[str, str] | None:
@@ -160,7 +161,10 @@ def page_mac(raw: bytes, pgno: int, hmac_key: bytes, hmac_algorithm: str) -> byt
 
 def aes_cbc(flag: str, key: bytes, iv: bytes, data: bytes) -> bytes:
     argv = ["openssl", "enc", flag, "-aes-256-cbc", "-nopad", "-K", key.hex(), "-iv", iv.hex()]
-    return subprocess.run(argv, input=data, capture_output=True, check=True).stdout
+    result = subprocess.run(argv, input=data, capture_output=True, check=False)
+    if result.returncode != 0:
+        raise RuntimeError(f"openssl 失败 ({result.returncode}): {result.stderr.decode(errors='replace').strip()}")
+    return result.stdout
 
 
 def read_page(handle, pgno: int) -> bytes:
@@ -174,16 +178,26 @@ def write_page(handle, pgno: int, raw: bytes) -> None:
 
 
 def relocate_lock_page(tmp_path: str, key: str, hmac_algorithm: str, *, verbose: bool = False) -> None:
-    """把锁页上的数据迁到 QQ 留空的前一页，并改写指向它的父指针"""
-    # integrity_check 无需自行遍历 b-tree 即可报出父指针位置，代价是多扫一遍全库
+    """把锁页上的数据迁到 QQ 留空的前一页，并改写指向它的父指针；锁页是根页或位于溢出链时放弃导出"""
+    # quick_check 无需自行遍历 b-tree 即可报出父指针位置，代价是多扫一遍全库。
+    # 它退出时关闭最后一个连接，SQLite 随之把副本的 WAL 合并回主文件，之后直接改页才不会被 WAL 中的同号页覆盖
     if verbose:
         log("正在检查锁页引用 ...")
-    checked = run_sqlcipher(tmp_path, key, hmac_algorithm, ["PRAGMA integrity_check(1);"])
-    found = LOCK_REF_RE.search(checked.stdout.decode(errors="replace"))
-    if found is None:
+    checked = run_sqlcipher(tmp_path, key, hmac_algorithm, ["PRAGMA quick_check;"])
+    refs = [line for line in checked.stdout.decode(errors="replace").splitlines() if line.endswith(LOCK_REF)]
+    if not refs:
         if verbose:
             log("未发现锁页引用，跳过迁移")
         return
+    if len(refs) > 1:
+        raise RuntimeError(f"锁页 {LOCK_PAGE} 被多处引用，放弃导出")
+    if refs[0].startswith("Freelist: "):
+        if verbose:
+            log("锁页位于空闲列表，导出不会读取，跳过迁移")
+        return
+    found = LOCK_REF_RE.search(refs[0])
+    if found is None:
+        raise RuntimeError(f"锁页 {LOCK_PAGE} 是表或索引的根页，暂不支持迁移，放弃导出")
     parent = int(found.group(1))
     cell = None if found.group(3) else int(found.group(2))
 
@@ -204,17 +218,21 @@ def relocate_lock_page(tmp_path: str, key: str, hmac_algorithm: str, *, verbose:
         write_page(handle, LOCK_PAGE - 1, moved[:mac_at] + page_mac(moved, LOCK_PAGE - 1, hmac_key, hmac_algorithm) + moved[mac_at + mac_size :])
 
         raw = read_page(handle, parent)
+        # 第 1 页的前 16 字节存放 salt，不参与加密；b-tree 页头位于 100 字节的数据库文件头之后
+        start, hdr = (SALT_SIZE, 100) if parent == 1 else (0, 0)
         iv = raw[body:mac_at]
-        plain = aes_cbc("-d", aes_key, iv, raw[:body])
-        offset = 8 if cell is None else struct.unpack_from(">H", plain, 12 + 2 * cell)[0]
-        if struct.unpack_from(">I", plain, offset)[0] != LOCK_PAGE:
-            raise RuntimeError(f"页 {parent} 该位置并未指向锁页，放弃导出")
+        plain = bytes(start) + aes_cbc("-d", aes_key, iv, raw[start:body])
+        offset = hdr + 8 if cell is None else struct.unpack_from(">H", plain, hdr + 12 + 2 * cell)[0]
+        # cell 前缀的报告也可能来自该 cell 的溢出链，此时父页是叶子页，或该位置不是子页指针
+        if plain[hdr] not in (0x02, 0x05) or struct.unpack_from(">I", plain, offset)[0] != LOCK_PAGE:
+            raise RuntimeError(f"锁页 {LOCK_PAGE} 位于页 {parent} 的溢出链，暂不支持迁移，放弃导出")
         patched = plain[:offset] + struct.pack(">I", LOCK_PAGE - 1) + plain[offset + 4 :]
-        encrypted = aes_cbc("-e", aes_key, iv, patched) + iv
+        encrypted = raw[:start] + aes_cbc("-e", aes_key, iv, patched[start:]) + iv
         write_page(handle, parent, encrypted + page_mac(encrypted, parent, hmac_key, hmac_algorithm) + raw[mac_at + mac_size :])
 
 
 def db_decrypt(db_path: Path, out_path: str, key: str, hmac_algorithm: str, *, verbose: bool = False) -> None:
+    """解密 db_path 及其 -wal 到 out_path；剥头副本与导出中的库放在输出目录下的隐藏临时目录，导出成功后才替换 out_path"""
     if Path(out_path).resolve() == db_path.resolve():
         raise ValueError("输出路径不能与源数据库相同")
     if Path(out_path).is_dir():
@@ -224,31 +242,36 @@ def db_decrypt(db_path: Path, out_path: str, key: str, hmac_algorithm: str, *, v
     if header.startswith(SQLITE_HEADER) or header[HEADER_SIZE:].startswith(SQLITE_HEADER):
         raise ValueError("文件不是加密库 (检测到明文 SQLite 文件头)")
     size = db_path.stat().st_size
-    # 迁移锁页要先复制整库并跑一遍 integrity_check，缺少 openssl 时在开销发生前报错
+    # 迁移锁页要先复制整库并跑一遍 quick_check，缺少 openssl 时在开销发生前报错
     has_lock_page = size >= HEADER_SIZE + LOCK_PAGE * PAGE_SIZE
     if has_lock_page:
         if verbose:
             log("数据库超过 1 GiB，准备临时副本并检查锁页 ...")
         if shutil.which("openssl") is None:
             raise RuntimeError("超过 1 GiB 的库需要 openssl 迁移锁页，未找到 openssl")
-    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(out_path).parent
+    out_dir.mkdir(parents=True, exist_ok=True)
+    free = shutil.disk_usage(out_dir).free
+    if free < size:
+        raise RuntimeError(f"输出目录空间不足: 临时副本需要 {size / MIB:.0f} MiB，可用 {free / MIB:.0f} MiB")
 
-    try:
-        fd, tmp_path = tempfile.mkstemp(dir="/tmp")
-    except OSError:
-        fd, tmp_path = tempfile.mkstemp()
-    os.close(fd)
+    # 导出文件由 sqlcipher 按 umask 创建，sudo 运行时其他用户仍可读取
+    work = Path(tempfile.mkdtemp(dir=out_dir, prefix=f".{Path(out_path).name}."))
+    tmp_path, tmp_out = str(work / "body"), str(work / "out")
+    wal = db_path.with_name(f"{db_path.name}-wal")
     try:
         copy_body(db_path, tmp_path)
+        # QQ 尚未 checkpoint 的提交仍在 WAL 中，副本带上它，sqlcipher 读取时才能看到最新数据
+        if wal.is_file():
+            shutil.copyfile(wal, f"{tmp_path}-wal")
 
         if has_lock_page:
             relocate_lock_page(tmp_path, key, hmac_algorithm, verbose=verbose)
 
-        Path(out_path).unlink(missing_ok=True)
-
-        export_plaintext(tmp_path, out_path, key, hmac_algorithm, size)
+        export_plaintext(tmp_path, tmp_out, key, hmac_algorithm, size)
+        os.replace(tmp_out, out_path)
     finally:
-        Path(tmp_path).unlink()
+        shutil.rmtree(work)
 
 
 def sqlcipher_reason(code: int, stderr: str) -> str:
