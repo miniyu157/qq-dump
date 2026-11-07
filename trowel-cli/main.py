@@ -3,23 +3,22 @@
 
 import sys
 
-from app.usage import parse_args, print_database_operations, print_databases, print_table_operations, usage_error
-from cmds import list_columns, show, tables
-from config.catalog import available_databases, available_tables
-from config.dotfile import load_config, resolve_db
+from app.dotfile import ConfigError, load_config, resolve_db
+from app.usage import fail, parse_args, print_table_operations, usage_error
+from cmds import list_columns, list_files, preview_tables, show, tables
 from db.connection import is_sqlite_file, open_readonly
-from db.schema import columns, table_names
+from db.schema import MissingTable, require_table
 
-# 键与 app.usage 中的操作名一致
+# 键与 app.usage 中的操作名一致；+list-files 与 +preview-tables 需要配置，在 main 中单独调用
 _RUNS = {"tables": tables.run, "list-columns": list_columns.run, "show": show.run}
 
 
 def main() -> None:
     args = parse_args()
     config = load_config()
-    if args.db is None:
-        print_databases(available_databases(config))
-        sys.exit(2)
+    if args.operation == "list-files":
+        list_files.run(config)
+        return
 
     args.db = resolve_db(config, args.db)
     if args.table is not None:
@@ -29,14 +28,12 @@ def main() -> None:
     conn = open_readonly(args.db)
 
     if args.operation is None:
-        if args.table is None:
-            print_database_operations(args.db.name, available_tables(config, table_names(conn)))
-        elif not columns(conn, args.table):
-            sys.exit(f"表不存在: {args.table}")
-        else:
-            print_table_operations(args.table)
+        require_table(conn, args.table)
+        print_table_operations(args.table)
         sys.exit(2)
-
+    if args.operation == "preview-tables":
+        preview_tables.run(conn, config, args)
+        return
     _RUNS[args.operation](conn, args)
 
 
@@ -45,3 +42,7 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         sys.exit(130)
+    except ConfigError as error:
+        fail(str(error))
+    except MissingTable as error:
+        usage_error(f"表不存在: {error}")

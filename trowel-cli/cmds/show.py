@@ -1,12 +1,11 @@
-"""--show: 按 rowid 升序渲染指定的整张表。"""
+"""+show: 按 rowid 升序渲染指定的整张表。"""
 
 import argparse
 import sqlite3
-import sys
 
 from cmds._status import STATUS_LABELS
 from db.rows import table_rows
-from db.schema import columns
+from db.schema import require_table
 from lib.wire import parse_fields
 from mapping.columns import column_mappings, mapping_of
 from maps import Status
@@ -40,8 +39,7 @@ def _cell(value: object) -> Cell:
 
 
 def run(conn: sqlite3.Connection, args: argparse.Namespace) -> None:
-    if not columns(conn, args.table):
-        sys.exit(f"表不存在: {args.table}")
+    require_table(conn, args.table)
     mappings = column_mappings(args.db, args.table)
     concealed = _concealed(args.columns)
     data = table_rows(conn, args.table, last=args.last)

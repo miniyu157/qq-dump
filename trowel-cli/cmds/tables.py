@@ -1,4 +1,4 @@
-"""tables: 列出所有表、行数与已定义列的比例。"""
+"""+tables: 列出所有表、行数与已定义列的比例。"""
 
 import argparse
 import sqlite3

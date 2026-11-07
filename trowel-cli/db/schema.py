@@ -5,7 +5,11 @@ from typing import NamedTuple
 
 from db._sql import quote_identifier
 
-__all__ = ["ColumnInfo", "TableInfo", "columns", "table_names", "tables"]
+__all__ = ["ColumnInfo", "MissingTable", "TableInfo", "columns", "require_table", "table_names", "tables"]
+
+
+class MissingTable(LookupError):
+    """require_table 找不到表时抛出，参数为表名。"""
 
 
 class TableInfo(NamedTuple):
@@ -35,3 +39,9 @@ def tables(conn: sqlite3.Connection) -> list[TableInfo]:
 def columns(conn: sqlite3.Connection, table: str) -> list[ColumnInfo]:
     """表的列，表不存在时为空。xinfo 包含虚拟表的隐藏列。"""
     return [ColumnInfo(*row) for row in conn.execute("SELECT cid, name, type, pk FROM pragma_table_xinfo(?)", (table,))]
+
+
+def require_table(conn: sqlite3.Connection, table: str) -> None:
+    """表不存在时抛出 MissingTable。需要表存在的操作在读取表之前调用。"""
+    if not columns(conn, table):
+        raise MissingTable(table)

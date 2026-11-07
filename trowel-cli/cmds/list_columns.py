@@ -1,11 +1,10 @@
-"""--list-columns: 列出指定表里的列及其映射状态。"""
+"""+list-columns: 列出指定表里的列及其映射状态。"""
 
 import argparse
 import sqlite3
-import sys
 
 from cmds._status import STATUS_LABELS
-from db.schema import columns
+from db.schema import columns, require_table
 from mapping.columns import column_mappings, mapping_of
 from render.dispatch import show
 from render.sheet import Column, Sheet
@@ -14,9 +13,8 @@ __all__ = ["run"]
 
 
 def run(conn: sqlite3.Connection, args: argparse.Namespace) -> None:
+    require_table(conn, args.table)
     infos = columns(conn, args.table)
-    if not infos:
-        sys.exit(f"表不存在: {args.table}")
     mappings = column_mappings(args.db, args.table)
     rows, styles = [], []
     for info in infos:

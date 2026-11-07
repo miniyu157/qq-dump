@@ -2,15 +2,18 @@
 
 import os
 import re
-import sys
 from pathlib import Path
 from typing import NamedTuple
 
-__all__ = ["Config", "load_config", "resolve_db"]
+__all__ = ["Config", "ConfigError", "load_config", "resolve_db"]
 
 _FILE = Path(".trowel")
 _PREFIX = "TROWEL_"
 _KEY = re.compile(r"TROWEL_(?:(WORKSPACE)|DB_([A-Za-z0-9_]+)|TABLE_([A-Za-z0-9_]+))")
+
+
+class ConfigError(Exception):
+    """load_config 遇到配置错误时抛出，参数为完整的错误消息。"""
 
 
 class Config(NamedTuple):
@@ -31,9 +34,9 @@ def _file_entries() -> dict[str, str]:
             continue
         key, separator, value = (part.strip() for part in line.partition("="))
         if not separator:
-            sys.exit(f".trowel 第 {number} 行不是键值对: {line}")
+            raise ConfigError(f".trowel 第 {number} 行不是键值对: {line}")
         if not _KEY.fullmatch(key):
-            sys.exit(f".trowel 第 {number} 行的键无法识别: {key}")
+            raise ConfigError(f".trowel 第 {number} 行的键无法识别: {key}")
         entries[key] = value
     return entries
 
@@ -42,14 +45,14 @@ def _environment_entries() -> dict[str, str]:
     entries = {key: value for key, value in os.environ.items() if key.startswith(_PREFIX)}
     for key in entries:
         if not _KEY.fullmatch(key):
-            sys.exit(f"环境变量无法识别: {key}")
+            raise ConfigError(f"环境变量无法识别: {key}")
     return entries
 
 
 def load_config() -> Config:
     """读取 CWD 下的 .trowel，同名 TROWEL_ 环境变量优先。
 
-    键无法识别、行不是键值对或工作区不是文件夹时退出进程。
+    键无法识别、行不是键值对或工作区不是文件夹时抛出 ConfigError。
     """
     workspace, db_aliases, table_aliases = Path(), {}, {}
     for key, value in (_file_entries() | _environment_entries()).items():
@@ -61,7 +64,7 @@ def load_config() -> Config:
         else:
             table_aliases[table_alias] = value
     if not workspace.is_dir():
-        sys.exit(f"工作区不是文件夹: {workspace}")
+        raise ConfigError(f"工作区不是文件夹: {workspace}")
     return Config(workspace, db_aliases, table_aliases)
 
 
