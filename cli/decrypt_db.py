@@ -94,6 +94,20 @@ def run_sqlcipher(db_path: str, key: str, hmac_algorithm: str, statements: list[
     return subprocess.run(["sqlcipher", db_path], input=sqlcipher_script(key, hmac_algorithm, statements), capture_output=True, check=False)
 
 
+def resolve_hmac_algorithm(tmp_path: str, key: str, hmac_algorithm: str, *, verbose: bool = False) -> str:
+    fallback = "HMAC_SHA512" if hmac_algorithm == "HMAC_SHA1" else "HMAC_SHA1"
+    for algorithm in (hmac_algorithm, fallback):
+        if verbose and algorithm != hmac_algorithm:
+            log(f"{hmac_algorithm} 解密校验失败，正在尝试 {algorithm} ...")
+        checked = run_sqlcipher(tmp_path, key, algorithm, ["SELECT count(*) FROM sqlite_master;"])
+        if checked.returncode == 0:
+            return algorithm
+        stderr = checked.stderr.decode(errors="replace")
+        if "hmac check failed" not in stderr:
+            break
+    raise RuntimeError(sqlcipher_reason(checked.returncode, stderr))
+
+
 def copy_body(db_path: Path, tmp_path: str) -> None:
     """复制剥除明文头后的密文；进度按已复制字节计算，总量确定"""
     total = db_path.stat().st_size - HEADER_SIZE
@@ -264,6 +278,7 @@ def db_decrypt(db_path: Path, out_path: str, key: str, hmac_algorithm: str, *, v
         # QQ 尚未 checkpoint 的提交仍在 WAL 中，副本带上它，sqlcipher 读取时才能看到最新数据
         if wal.is_file():
             shutil.copyfile(wal, f"{tmp_path}-wal")
+        hmac_algorithm = resolve_hmac_algorithm(tmp_path, key, hmac_algorithm, verbose=verbose)
 
         if has_lock_page:
             relocate_lock_page(tmp_path, key, hmac_algorithm, verbose=verbose)
