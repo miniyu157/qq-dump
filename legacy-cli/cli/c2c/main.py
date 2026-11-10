@@ -76,6 +76,8 @@ def run(args, *, decode):
     output_path = os.path.join(args.output, "messages.jsonl")
 
     conn = sqlite3.connect(db_msg)
+    # 全表排序会产生临时文件，系统临时目录不可写时改用内存
+    conn.execute("PRAGMA temp_store = MEMORY")
     try:
         cursor = conn.cursor()
         cursor.execute(f"SELECT COUNT(*) FROM {schema.Table_C2c_msg}")

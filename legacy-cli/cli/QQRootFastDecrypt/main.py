@@ -79,6 +79,14 @@ def _time_decoder(messages, decode) -> _Timing:
     return _Timing(perf_counter() - start, succeeded, failed)
 
 
+def _open_readonly(path: str) -> sqlite3.Connection:
+    """打开只读库并让 SQLite 在内存中排序；系统临时目录不可写时排序会失败。"""
+    uri = Path(path).resolve().as_uri() + "?mode=ro"
+    con = sqlite3.connect(uri, uri=True)
+    con.execute("PRAGMA temp_store = MEMORY")
+    return con
+
+
 def _compare_parsers(db_path: str) -> None:
     """交互选择样本并只读数据库进行计时，输出结果；完成或失败后等待回车。"""
     print("\n--- 新旧解析器耗时对比 ---")
@@ -95,8 +103,7 @@ def _compare_parsers(db_path: str) -> None:
     try:
         old_decode = _load_old_decoder()
         print("读取样本中...", flush=True)
-        uri = Path(db_path).resolve().as_uri() + "?mode=ro"
-        with closing(sqlite3.connect(uri, uri=True)) as conn:
+        with closing(_open_readonly(db_path)) as conn:
             messages = _benchmark_messages(conn, limit=limits[choice])
         if not messages:
             print("没有可测试的非空消息。")
@@ -268,7 +275,7 @@ class ProfileManager:
         if not os.path.exists(db_path):
             print(f"错误: 身份数据库文件 '{db_path}' 不存在。")
             exit(1)
-        self.db_path = f"file:{db_path}?mode=ro"
+        self.db_path = db_path
         self.my_uid = ""
         self.my_qq = ""
         self.all_users = {}  # {uid: {qq, nickname, remark, group_id, ...}} # 包含所有好友和非好友
@@ -281,9 +288,9 @@ class ProfileManager:
         加载所有用户信息的总入口。
         以 profile_info_v6 作为所有用户的基础信息来源，再用 buddy_list 补充好友特有信息。
         """
-        print(f"\n正在从 '{os.path.basename(self.db_path.replace('file:', '').split('?')[0])}' 加载用户信息...")
+        print(f"\n正在从 '{os.path.basename(self.db_path)}' 加载用户信息...")
         try:
-            with sqlite3.connect(self.db_path, uri=True) as con:
+            with closing(_open_readonly(self.db_path)) as con:
                 cur = con.cursor()
                 self._load_my_uid(cur)
                 self._load_groups(cur)
@@ -376,7 +383,7 @@ class ProfileManager:
 
         all_peer_uids = set()
         try:
-            with sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True) as con:
+            with closing(_open_readonly(DB_PATH)) as con:
                 cur = con.cursor()
                 cur.execute(f"SELECT DISTINCT `{COL_PEER_UID}` FROM {TABLE_NAME}")
                 rows = cur.fetchall()
@@ -1895,7 +1902,7 @@ QQRootFastDecrypt -- QQ NT 聊天记录导出工具
             return
 
         try:
-            with sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True) as con:
+            with closing(_open_readonly(DB_PATH)) as con:
                 if is_timeline_mode:
                     export_timeline(con, config, target_uids, scope_info)
                 else:  # 单独文件模式
