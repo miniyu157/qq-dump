@@ -1,1 +1,6 @@
 .git_archival.txt  export-subst
+
+# 脚本须保持 LF：Windows 检出为 CRLF 后，shebang 会把 \r 当作解释器名的一部分
+qqdump  text eol=lf
+*.py    text eol=lf
+*.cmd   text eol=crlf
