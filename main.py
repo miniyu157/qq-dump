@@ -52,13 +52,14 @@ def cmd_db(args: argparse.Namespace) -> None:
 
 def cmd_avatar(args: argparse.Namespace) -> None:
     """获取并渲染指定 UIN 的头像；--chafa 交给 chafa，--ascii 使用真彩色字符画。"""
+    from app.dependencies import CHAFA, PILLOW
     from service.avatars import avatar, prepare_cache
 
     if args.chafa:
-        require_binaries("使用 chafa 查看头像", ["chafa"])
+        require_binaries("使用 chafa 查看头像", [CHAFA])
     else:
         # 默认渲染与 --ascii 都经 lib.tui.image，依赖 pillow
-        require_modules("渲染头像", ["PIL"])
+        require_modules("渲染头像", [PILLOW])
 
     prepare_cache()
     try:
@@ -155,24 +156,13 @@ def cmd_tealina28_qqnt_export(args: argparse.Namespace) -> None:
 
 def cmd_check(args: argparse.Namespace) -> None:
     """检查运行时依赖，按二进制与 Python 模块分类列出结果；依赖均为可选，缺失不影响退出码。"""
-    import importlib.util
-    import shutil
+    from app.dependencies import BINARIES, MODULES
+    from app.utils import binary_found, module_found
 
-    binaries = (
-        ("sudo", "QQ 数据不可访问时需要"),
-        ("sqlcipher", "解密数据库时需要"),
-        ("openssl", "解密超过 1 GiB 的数据库时需要"),
-        ("chafa", "运行 avatar --chafa 时需要"),
-    )
     # 显示 pip 包名，按导入名检查
-    modules = (
-        ("pillow", "PIL", "运行 avatar 渲染头像时需要"),
-        ("rich", "rich", "仅 Table2d 研究套件需要"),
-        ("tomlkit", "tomlkit", "运行 Tealina28/QQNT_Export 导出时需要"),
-    )
     groups = (
-        ("二进制依赖", [(name, purpose, shutil.which(name) is not None) for name, purpose in binaries]),
-        ("Python 依赖", [(name, purpose, importlib.util.find_spec(module) is not None) for name, module, purpose in modules]),
+        ("二进制依赖", [(binary.name, binary.purpose, binary_found(binary)) for binary in BINARIES]),
+        ("Python 依赖", [(module.package, module.purpose, module_found(module)) for module in MODULES]),
     )
 
     print(f"{err.BOLD}QQ DUMP 依赖检查{err.RESET}", file=sys.stderr)

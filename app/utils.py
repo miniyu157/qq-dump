@@ -3,10 +3,12 @@
 import importlib.util
 import shutil
 import sys
+from collections.abc import Sequence
 
 from app.ansi import err
+from app.dependencies import Binary, Module
 
-__all__ = ["cancel_log", "danger_log", "good_log", "info_log", "prefer_binaries", "require_binaries", "require_modules", "warn_log"]
+__all__ = ["binary_found", "cancel_log", "danger_log", "good_log", "info_log", "module_found", "prefer_binaries", "require_binaries", "require_modules", "warn_log"]
 
 
 def info_log(message: str) -> None:
@@ -34,29 +36,35 @@ def danger_log(message: str) -> None:
     print(f"{err.BOLD}{err.ERR}† {message}{err.RESET}", file=sys.stderr)
 
 
-def require_binaries(purpose: str, names: list[str]) -> None:
+def require_binaries(purpose: str, binaries: Sequence[Binary]) -> None:
     """PATH 中缺少任一二进制时输出警告并以状态码 1 退出；purpose 为需要这些依赖的功能。"""
-    _exit_if_missing(f"{purpose}需要以下二进制依赖", _missing_binaries(names))
-
-
-def prefer_binaries(purpose: str, names: list[str]) -> bool:
-    """PATH 中缺少任一二进制时输出提示，不退出；返回是否齐全。purpose 为需要这些依赖的功能。"""
-    missing = _missing_binaries(names)
+    missing = [binary for binary in binaries if not binary_found(binary)]
     if missing:
-        info_log(f"{purpose}需要以下二进制依赖: {' '.join(missing)}")
+        warn_log(f"{purpose}需要以下二进制依赖: {' '.join(binary.name for binary in missing)}")
+        sys.exit(1)
+
+
+def prefer_binaries(purpose: str, binaries: Sequence[Binary]) -> bool:
+    """PATH 中缺少任一二进制时输出提示，不退出；返回是否齐全。purpose 为需要这些依赖的功能。"""
+    missing = [binary for binary in binaries if not binary_found(binary)]
+    if missing:
+        info_log(f"{purpose}需要以下二进制依赖: {' '.join(binary.name for binary in missing)}")
     return not missing
 
 
-def require_modules(purpose: str, names: list[str]) -> None:
-    """当前 Python 缺少任一模块时输出警告并以状态码 1 退出；purpose 为需要这些依赖的功能。"""
-    _exit_if_missing(f"{purpose}需要以下 Python 依赖", [name for name in names if importlib.util.find_spec(name) is None])
-
-
-def _missing_binaries(names: list[str]) -> list[str]:
-    return [name for name in names if shutil.which(name) is None]
-
-
-def _exit_if_missing(message: str, missing: list[str]) -> None:
+def require_modules(purpose: str, modules: Sequence[Module]) -> None:
+    """当前 Python 缺少任一模块时输出警告并以状态码 1 退出；提示使用 pip 包名。purpose 为需要这些依赖的功能。"""
+    missing = [module for module in modules if not module_found(module)]
     if missing:
-        warn_log(f"{message}: {' '.join(missing)}")
+        warn_log(f"{purpose}需要以下 Python 依赖: {' '.join(module.package for module in missing)}")
         sys.exit(1)
+
+
+def binary_found(binary: Binary) -> bool:
+    """PATH 中是否有该二进制。"""
+    return shutil.which(binary.name) is not None
+
+
+def module_found(module: Module) -> bool:
+    """当前 Python 能否找到该模块的导入名。"""
+    return importlib.util.find_spec(module.module) is not None

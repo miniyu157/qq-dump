@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from app.ansi import err
+from app.dependencies import OPENSSL, SQLCIPHER
 from app.utils import info_log, prefer_binaries, require_binaries, warn_log
 
 __all__ = ["prepare_access", "valid_keys"]
@@ -14,8 +15,8 @@ def prepare_access(root_dir: str | None, user: str | None, *, decrypting: bool) 
     """依次检查 QQ 数据目录与解密依赖，返回是否需要经 sudo 执行；必需依赖不满足时退出，缺少 openssl 时只提示。"""
     _require_qq_data(root_dir, user)
     if decrypting:
-        require_binaries("数据库解密", ["sqlcipher"])
-        prefer_binaries("TIP: 解密超过 1 GiB 的数据库时", ["openssl"])
+        require_binaries("数据库解密", [SQLCIPHER])
+        prefer_binaries("TIP: 解密超过 1 GiB 的数据库时", [OPENSSL])
     return not _qq_data_accessible(root_dir, user)
 
 

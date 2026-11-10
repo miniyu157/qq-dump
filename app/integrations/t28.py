@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from app.ansi import err
+from app.dependencies import GIT, TOMLKIT
 from app.errors import AppError
 from app.utils import cancel_log, good_log, require_binaries, require_modules, warn_log
 from lib.tui.choose import ChoiceCancelled, choose, choose_many
@@ -60,7 +61,7 @@ def check_environment() -> None:
     if not interpreter.is_file():
         _create_virtualenv()
 
-    require_modules("Tealina28/QQNT_Export 导出", ["tomlkit"])
+    require_modules("Tealina28/QQNT_Export 导出", [TOMLKIT])
 
 
 def _clone_export_project() -> None:
@@ -73,7 +74,7 @@ def _clone_export_project() -> None:
         cancel_log("未克隆 Tealina28/QQNT_Export")
         sys.exit(1)
 
-    require_binaries("克隆 Tealina28/QQNT_Export ", ["git"])
+    require_binaries("克隆 Tealina28/QQNT_Export ", [GIT])
     proc = subprocess.run(["git", "clone", "--depth", "1", "--branch", "dev", "https://github.com/Tealina28/QQNT_Export.git", str(_EXPORT_DIR)], check=False)
     if proc.returncode != 0:
         warn_log(f"克隆失败，退出码 {proc.returncode}")

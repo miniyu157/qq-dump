@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from api import load_friends, load_owner
 from app.ansi import out
+from app.dependencies import XDG_OPEN
 from app.utils import good_log, prefer_binaries
 from service.avatars import avatar, prepare_cache
 
@@ -204,7 +205,7 @@ _OPENER = "默认浏览器" if sys.platform == "win32" else "xdg-open"
 
 def _can_open_page() -> bool:
     """能否自动打开页面；缺少 xdg-open 时输出提示，调用方不等待回车，直接进入服务阻塞。"""
-    return sys.platform == "win32" or prefer_binaries("自动打开页面", ["xdg-open"])
+    return sys.platform == "win32" or prefer_binaries("自动打开页面", [XDG_OPEN])
 
 
 def _open_page(url: str) -> None:

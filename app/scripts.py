@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from app.ansi import err
+from app.dependencies import SUDO
 from app.errors import AppError
 from app.utils import danger_log, require_binaries
 
@@ -81,7 +82,7 @@ def set_verbose(enabled: bool) -> None:
 def _run(command: list[str], *, as_root: bool, label: str | None = None, capture_stdout: bool = False) -> subprocess.CompletedProcess[str]:
     """as_root 为真时检查 sudo 依赖并通过 sudo 执行。"""
     if as_root:
-        require_binaries("提升权限", ["sudo"])
+        require_binaries("提升权限", [SUDO])
         if _sudo_notice:
             # 只显示脚本名: 完整命令行含 -k/-g 密钥
             danger_log(f"使用 sudo 运行: ({Path(command[1]).name})")
