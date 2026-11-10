@@ -3,6 +3,7 @@
 import errno
 import hmac
 import json
+import os
 import secrets
 import shutil
 import subprocess
@@ -197,6 +198,26 @@ def push_screen() -> None:
     print("\n" * rows + "\033[H", end="", flush=True)
 
 
+# Windows 由系统关联程序打开页面，其余平台交给 xdg-open
+_OPENER = "默认浏览器" if sys.platform == "win32" else "xdg-open"
+
+
+def _can_open_page() -> bool:
+    """能否自动打开页面；缺少 xdg-open 时输出提示，调用方不等待回车，直接进入服务阻塞。"""
+    return sys.platform == "win32" or prefer_binaries("自动打开页面", ["xdg-open"])
+
+
+def _open_page(url: str) -> None:
+    """在浏览器中打开 url，失败时静默忽略。"""
+    try:
+        if sys.platform == "win32":
+            os.startfile(url)
+        else:
+            subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass
+
+
 def serve(profile_db: str, nt_db: str | None = None) -> None:
     """启动 WebUI，等待回车打开页面，阻塞到 Ctrl+C"""
     try:
@@ -216,18 +237,14 @@ def serve(profile_db: str, nt_db: str | None = None) -> None:
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
     try:
-        # 缺少 xdg-open 时只提示，不等待回车，直接进入服务阻塞
-        if sys.stdin.isatty() and prefer_binaries("自动打开页面", ["xdg-open"]):
-            print("按回车键使用 xdg-open 打开页面", file=sys.stderr, end="", flush=True)
+        if sys.stdin.isatty() and _can_open_page():
+            print(f"按回车键使用 {_OPENER} 打开页面", file=sys.stderr, end="", flush=True)
             try:
                 input()
             except EOFError:
                 pass
             else:
-                try:
-                    subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-                except OSError:
-                    pass
+                _open_page(url)
         server_thread.join()
     except KeyboardInterrupt:
         pass
