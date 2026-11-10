@@ -3,14 +3,31 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-# 优先使用系统 python3；没有时由 uv 查找解释器，在仓库目录下查找会优先使用其中的 .venv
-if command -v python3 >/dev/null 2>&1; then
-    PYTHON=python3
-elif command -v uv >/dev/null 2>&1 && PYTHON="$(cd -- "$SCRIPT_DIR" && uv python find 2>/dev/null)"; then
-    :
-else
-    printf "未找到 python3，也无法通过 uv 找到 Python 解释器\n" >&2
-    exit 1
+# 依次尝试：QQDUMP_PYTHON、仓库 .venv、系统 python3、uv 查找的解释器；只找解释器，不检查或安装依赖
+supported() {
+    "$1" -c 'import sys; sys.exit(sys.version_info < (3, 11))' >/dev/null 2>&1
+}
+
+if [ -n "${QQDUMP_PYTHON:-}" ]; then
+    if ! supported "$QQDUMP_PYTHON"; then
+        printf "QQDUMP_PYTHON 不可用或版本低于 3.11: %s\n" "$QQDUMP_PYTHON" >&2
+        exit 1
+    fi
+    exec "$QQDUMP_PYTHON" "$SCRIPT_DIR/main.py" "$@"
 fi
 
-exec "$PYTHON" "$SCRIPT_DIR/main.py" "$@"
+for candidate in "$SCRIPT_DIR/.venv/bin/python" python3; do
+    if supported "$candidate"; then
+        exec "$candidate" "$SCRIPT_DIR/main.py" "$@"
+    fi
+done
+
+if command -v uv >/dev/null 2>&1; then
+    candidate="$(uv --directory "$SCRIPT_DIR" python find '>=3.11' 2>/dev/null)" || candidate=""
+    if [ -n "$candidate" ] && supported "$candidate"; then
+        exec "$candidate" "$SCRIPT_DIR/main.py" "$@"
+    fi
+fi
+
+printf "未找到 Python 3.11 及以上版本；可安装后重试，或用 QQDUMP_PYTHON 指定解释器\n" >&2
+exit 1
