@@ -173,7 +173,7 @@ v0.5.0 起可以直接从主菜单运行 [Tealina28/QQNT_Export](https://github.
 
 ### *₊˚⊹ 精心设计的交互逻辑*
 
-- 除了 Python 以外所有依赖均为可选，按需使用，不自动补全。  
+- 除了 Python 以外所有依赖均为可选，按需使用；缺少时在交互终端询问补全方式，非交互时给出命令。  
 - 当一个功能 (如 friends 好友查询、legacy 消息导出) 需要数据库但你没有提供文件时，会自动扫描账号并弹出账号选择界面，选择后会解密需要的文件到临时文件夹。
 - 提供数据库文件的方式有很多种，如 `QQDUMP_*` 环境变量、`.env` 文件、CLI 选项 等，了解优先级等详细信息，可以运行 `help` 命令查看帮助信息。
 - CLI 不敷衍，管道数据进出分明，帮助信息与子命令用法完整。
@@ -250,14 +250,24 @@ v0.5.0 起可以直接从主菜单运行 [Tealina28/QQNT_Export](https://github.
 
 ## 开始
 
-确保电脑中有 Python，程序需要它运行。
+确保电脑中有 Python 3.11 及以上版本，程序需要它运行。
 
 **方式一: 下载仓库后运行:**
 
 ```bash
 git clone https://github.com/miniyu157/qq-dump.git
-./qqdump  # 或 ./main.py
+./qqdump  # 或 ./main.py；Windows 的 PowerShell 与 cmd 中为 .\qqdump
 ```
+
+启动器按以下顺序查找解释器，只负责启动，不检查依赖:
+
+1. 环境变量 `QQDUMP_PYTHON` 指定的解释器，不可用时直接报错
+2. 仓库内的 `.venv`
+3. 系统 Python (`python3`；Windows 为 `py`、`python`)
+4. `uv python find` 找到的解释器
+
+功能用到的依赖缺失时，程序会列出当前环境可用的补全方式: pip、uv、项目 `.venv` (安装后自动重新运行)、Termux 的 `pkg`。  
+系统包管理器接管的 Python 环境 (PEP 668) 不提供 pip 与 uv；Termux 以外的平台缺少二进制依赖时只提示名称。
 
 仓库更新比较快的时候，可以用这个方式便捷地获取最新代码，运行以下命令即可更新:
 
