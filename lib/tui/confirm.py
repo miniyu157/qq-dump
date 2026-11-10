@@ -1,10 +1,9 @@
 """终端确认: 在肯定与否定之间选择，返回布尔值。"""
 
 import sys
-import termios
-import tty
 
-from lib.tui.terminal import PINK, ChoiceCancelled, divider_line, hint, read_key, split_title, strip_styles, terminal_width, truncate
+from lib.tui.keys import ENTER, EOF, ESCAPE, LEFT, RIGHT, cbreak, read_key
+from lib.tui.terminal import PINK, ChoiceCancelled, ansi_supported, divider_line, hint, split_title, strip_styles, terminal_width, truncate
 
 __all__ = ["confirm"]
 
@@ -16,7 +15,7 @@ def confirm(prompt: str, file=None, *, divider: bool = True, default: bool = Tru
     提交后保留并压暗提示与选项，divider 控制是否追加终端宽度的分隔线；
     取消、Esc 或 Ctrl-C 后保留提示与选项，仅清除底部提示区。
     Esc 抛 ChoiceCancelled，Ctrl-C 与 EOF 原样传播；交互行超宽时截断，窗口缩放不受支持。
-    非 TTY 时列出 y/n 与标签后读取一行：y/yes 为真，n/no 为假，空行取 default，
+    非 TTY 或输出端不支持 ANSI 时按纯文本列出 y/n 与标签后读取一行：y/yes 为真，n/no 为假，空行取 default，
     其他内容抛 ValueError。default 或标签无效时抛 ValueError。
     """
     if default is not True and default is not False:
@@ -29,20 +28,23 @@ def confirm(prompt: str, file=None, *, divider: bool = True, default: bool = Tru
         file = sys.stderr
     isatty = getattr(file, "isatty", None)
     output_is_tty = isatty is not None and isatty()
-    if sys.stdin.isatty() and output_is_tty:
+    output_ansi = output_is_tty and ansi_supported(file)
+    if sys.stdin.isatty() and output_ansi:
         result = _confirm_interactive(prompt, file, default=default, affirmative=affirmative, negative=negative)
     else:
-        result = _confirm_non_interactive(prompt, file, default=default, affirmative=affirmative, negative=negative)
+        result = _confirm_non_interactive(prompt, file, default=default, affirmative=affirmative, negative=negative, styled=output_ansi)
     if divider:
-        print(divider_line(file, styled=output_is_tty), file=file)
+        print(divider_line(file, styled=output_ansi), file=file)
     return result
 
 
-def _confirm_non_interactive(prompt, file, *, default, affirmative, negative) -> bool:
+def _confirm_non_interactive(prompt, file, *, default, affirmative, negative, styled) -> bool:
+    # 输出端不解释 ANSI 时去掉调用方传入的样式，否则原样输出
+    plain = str if styled else strip_styles
     for line in split_title(prompt):
-        print(line, file=file)
-    print(f"  y. {affirmative}{' (默认)' if default else ''}", file=file)
-    print(f"  n. {negative}{'' if default else ' (默认)'}", file=file)
+        print(plain(line), file=file)
+    print(f"  y. {plain(affirmative)}{' (默认)' if default else ''}", file=file)
+    print(f"  n. {plain(negative)}{'' if default else ' (默认)'}", file=file)
     answer = input()
     normalized = answer.strip().lower()
     if normalized in ("y", "yes"):
@@ -60,52 +62,48 @@ def _confirm_interactive(prompt, file, *, default, affirmative, negative) -> boo
     labels = (affirmative, negative)
     index = 0 if default else 1
     fd = sys.stdin.fileno()
-    settings = termios.tcgetattr(fd)
     drawn = False
     submitted = False
-    try:
-        tty.setcbreak(fd)
-        file.write("\x1b[?25l")
-        for line in lines:
-            file.write(f"{line}\n")
-        file.write("\n")
-        _draw_choice(file, labels, index, width=width)
-        drawn = True
-        while True:
-            key = read_key(fd)
-
-            if key in (b"\r", b"\n"):
-                file.write(f"\x1b[{len(lines) + 3}A")
-                for line in lines:
-                    file.write(f"\x1b[2K\r\x1b[2m{strip_styles(line)}\x1b[0m\n")
-                file.write("\x1b[2K\r\n")
-                _draw_choice(file, labels, index, width=width, dim=True)
-                file.write("\x1b[0J")
-                submitted = True
-                return index == 0
-            if key == b"\x1b":
-                raise ChoiceCancelled("用户取消选择")
-            if key in (b"", b"\x04"):
-                raise EOFError
-            if key in (b"y", b"Y"):
-                return True
-            if key in (b"n", b"N"):
-                return False
-
-            if key in (b"\t", b"\x1b[D", b"\x1bOD", b"\x1b[C", b"\x1bOC"):
-                index = 1 - index
-            else:
-                continue
-            file.write("\x1b[2A")
-            _draw_choice(file, labels, index, width=width)
-    finally:
+    with cbreak(fd):
         try:
+            file.write("\x1b[?25l")
+            for line in lines:
+                file.write(f"{line}\n")
+            file.write("\n")
+            _draw_choice(file, labels, index, width=width)
+            drawn = True
+            while True:
+                key = read_key(fd)
+
+                if key == ENTER:
+                    file.write(f"\x1b[{len(lines) + 3}A")
+                    for line in lines:
+                        file.write(f"\x1b[2K\r\x1b[2m{strip_styles(line)}\x1b[0m\n")
+                    file.write("\x1b[2K\r\n")
+                    _draw_choice(file, labels, index, width=width, dim=True)
+                    file.write("\x1b[0J")
+                    submitted = True
+                    return index == 0
+                if key == ESCAPE:
+                    raise ChoiceCancelled("用户取消选择")
+                if key == EOF:
+                    raise EOFError
+                if key in ("y", "Y"):
+                    return True
+                if key in ("n", "N"):
+                    return False
+
+                if key in ("\t", LEFT, RIGHT):
+                    index = 1 - index
+                else:
+                    continue
+                file.write("\x1b[2A")
+                _draw_choice(file, labels, index, width=width)
+        finally:
             if drawn and not submitted:
                 file.write("\x1b[1A\r\x1b[0J")
             file.write("\x1b[?25h")
             file.flush()
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, settings)
 
 
 def _draw_choice(file, labels, index, *, width: int, dim: bool = False) -> None:

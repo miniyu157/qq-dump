@@ -20,6 +20,10 @@ __all__ = ["check_environment", "run"]
 _EXPORT_RELATIVE = Path("tmp") / "QQNT_Export"
 _EXPORT_DIR = Path(__file__).resolve().parents[2] / _EXPORT_RELATIVE
 
+_VENV_DIR = Path(".venv")
+# 虚拟环境内的解释器：Windows 的 venv 使用 Scripts/python.exe
+_VENV_PYTHON = _VENV_DIR / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+
 # 已知取值；配置中的未知值仍会出现在菜单里
 _FORMATS = ("chatlab_json", "chatlab_jsonl", "html")
 _TYPES = ("c2c", "group", "dataline")
@@ -30,7 +34,7 @@ def check_environment() -> None:
     """检查 Tealina28/QQNT_Export 的运行前提；须在 run() 与补全数据库前调用。
 
     缺少入口目录时询问是否从上游克隆；config.toml 缺失时从 example.toml 复制，
-    example.toml 也没有时退出；.venv/bin/python 缺失时询问是否创建虚拟环境，
+    example.toml 也没有时退出；虚拟环境解释器缺失时询问是否创建虚拟环境，
     创建后询问是否安装 requirements.txt。
     入口文件缺失、拒绝克隆或创建、克隆或创建失败，或本解释器缺少 tomlkit 时，
     输出提示并以状态码 1 退出。
@@ -52,7 +56,7 @@ def check_environment() -> None:
         shutil.copyfile(example_path, config_path)
         good_log(f"已复制 {example_path.name} 到 {config_path.name}: {_EXPORT_DIR}")
 
-    interpreter = _EXPORT_DIR / ".venv" / "bin" / "python"
+    interpreter = _EXPORT_DIR / _VENV_PYTHON
     if not interpreter.is_file():
         _create_virtualenv()
 
@@ -82,14 +86,14 @@ def _create_virtualenv() -> None:
     创建后询问是否安装 requirements.txt，安装失败时退出。
     """
     try:
-        approved = confirm(f"目前在 {err.HL}{_EXPORT_RELATIVE}{err.RESET} 内没有 .venv/bin/python，是否创建虚拟环境？")
+        approved = confirm(f"目前在 {err.HL}{_EXPORT_RELATIVE}{err.RESET} 内没有 {err.HL}{_EXPORT_RELATIVE / _VENV_PYTHON}{err.RESET}，是否创建虚拟环境？")
     except (ChoiceCancelled, EOFError):
         approved = False
     if not approved:
         cancel_log("未创建虚拟环境")
         sys.exit(1)
 
-    venv_dir = _EXPORT_DIR / ".venv"
+    venv_dir = _EXPORT_DIR / _VENV_DIR
     proc = subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=False)
     if proc.returncode != 0:
         warn_log(f"创建虚拟环境失败，退出码 {proc.returncode}: {venv_dir}")
@@ -97,12 +101,12 @@ def _create_virtualenv() -> None:
     good_log(f"已创建虚拟环境: {venv_dir}")
 
     try:
-        install = confirm(f"是否执行 {err.HL}.venv/bin/pip install -r requirements.txt{err.RESET} 安装依赖？")
+        install = confirm(f"是否使用 {err.HL}{_EXPORT_RELATIVE / _VENV_PYTHON}{err.RESET} 执行 pip install -r requirements.txt 安装依赖？")
     except (ChoiceCancelled, EOFError):
         install = False
     if not install:
         return
-    proc = subprocess.run([str(venv_dir / "bin" / "python"), "-m", "pip", "install", "-r", "requirements.txt"], cwd=str(_EXPORT_DIR), check=False)
+    proc = subprocess.run([str(_EXPORT_DIR / _VENV_PYTHON), "-m", "pip", "install", "-r", "requirements.txt"], cwd=str(_EXPORT_DIR), check=False)
     if proc.returncode != 0:
         warn_log(f"安装依赖失败，退出码 {proc.returncode}: {venv_dir}")
         sys.exit(1)
@@ -123,7 +127,7 @@ def run(*, db_dir: str | Path, output_dir: str | Path) -> int:
 
     entry_path = _EXPORT_DIR / "main.py"
     config_path = _EXPORT_DIR / "config.toml"
-    interpreter = _EXPORT_DIR / ".venv" / "bin" / "python"
+    interpreter = _EXPORT_DIR / _VENV_PYTHON
 
     import tomlkit
 

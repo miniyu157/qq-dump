@@ -2,11 +2,10 @@
 
 import re
 import sys
-import termios
-import tty
 from collections.abc import Sequence
 
-from lib.tui.terminal import PINK, ChoiceCancelled, divider_line, hint, read_key, split_title, strip_styles, terminal_width, truncate
+from lib.tui.keys import DOWN, ENTER, EOF, ESCAPE, LEFT, RIGHT, UP, cbreak, read_key
+from lib.tui.terminal import PINK, ChoiceCancelled, ansi_supported, divider_line, hint, split_title, strip_styles, terminal_width, truncate
 
 __all__ = ["ChoiceCancelled", "choose", "choose_many"]
 
@@ -20,7 +19,7 @@ def choose(options: Sequence[str], file=None, *, title: str = "", divider: bool 
     height 为每页项数，initial 为交互模式的初始光标；交互行超宽时截断，窗口缩放不受支持。
     确认后保留并压暗标题与当前页，divider 控制是否追加终端宽度的分隔线；
     取消、Esc 或 Ctrl-C 后保留标题与当前页，仅清除页码与提示区。
-    非 TTY 时列出全部选项，只接受一次编号输入，不使用 initial 作为空输入默认值。
+    非 TTY 或输出端不支持 ANSI 时按纯文本列出全部选项，只接受一次编号输入，不使用 initial 作为空输入默认值。
     参数或输入无效抛 ValueError，Esc 抛 ChoiceCancelled，EOF 与 Ctrl-C 原样传播；
     交互结束时恢复终端状态。
     """
@@ -32,7 +31,7 @@ def choose_many(options: Sequence[str], file=None, *, title: str = "", divider: 
 
     空格切换勾选，a 全选或取消全选，Enter 提交；selected 为预选下标，与 initial 独立。
     默认输出到 stderr，分页、保留当前页及 divider 的行为与 choose 相同。
-    非 TTY 时列出全部选项，接受空格或逗号分隔的编号，空输入返回空列表；
+    非 TTY 或输出端不支持 ANSI 时按纯文本列出全部选项，接受空格或逗号分隔的编号，空输入返回空列表；
     不采用预选，重复编号去重，任一编号无效则整次输入失败，不自动重试。
     height 必须为正整数，initial 与 selected 必须为有效下标，选项不能为空。
     参数或输入无效抛 ValueError，Esc 抛 ChoiceCancelled，EOF 与 Ctrl-C 原样传播；
@@ -54,13 +53,16 @@ def _choose(options, file, *, title, divider, height, initial, selected, multipl
         file = sys.stderr
     isatty = getattr(file, "isatty", None)
     output_is_tty = isatty is not None and isatty()
+    output_ansi = output_is_tty and ansi_supported(file)
     title_lines = split_title(title)
-    if sys.stdin.isatty() and output_is_tty:
+    if sys.stdin.isatty() and output_ansi:
         indices = _choose_interactive(options, file, title_lines, height=height, initial=initial, selected=set(selected), multiple=multiple)
     else:
-        _draw_title(title_lines, file)
+        # 输出端不解释 ANSI 时去掉调用方传入的样式，否则原样输出
+        plain = str if output_ansi else strip_styles
+        _draw_title([plain(line) for line in title_lines], file)
         for number, label in enumerate(options, 1):
-            print(f"  {number}. {label}", file=file)
+            print(f"  {number}. {plain(label)}", file=file)
         answer = input()
         tokens = re.split(r"[\s,]+", answer.strip()) if multiple else [answer]
         if multiple and not answer.strip():
@@ -73,7 +75,7 @@ def _choose(options, file, *, title, divider, height, initial, selected, multipl
             raise ValueError(f"未知选项: {answer!r}")
 
     if divider:
-        print(divider_line(file, styled=output_is_tty), file=file)
+        print(divider_line(file, styled=output_ansi), file=file)
     return indices
 
 
@@ -91,7 +93,6 @@ def _choose_interactive(options, file, title_lines, *, height, initial, selected
     width = terminal_width(file)
     title_lines = [truncate(line, width) for line in title_lines]
     fd = sys.stdin.fileno()
-    settings = termios.tcgetattr(fd)
     index = initial
     page_height = min(height, len(options))
     pages = (len(options) + height - 1) // height
@@ -99,55 +100,52 @@ def _choose_interactive(options, file, title_lines, *, height, initial, selected
     up = page_height + (1 if pages > 1 else 0) + _HINT_GAP
     hint_drawn = False
     submitted = False
-    try:
-        tty.setcbreak(fd)
-        file.write("\x1b[?25l")
-        _draw_title(title_lines, file)
-        _draw_page(options, file, index, selected, height=height, multiple=multiple, width=width)
-        hint_drawn = True
-        while True:
-            key = read_key(fd)
-
-            if key in (b"\r", b"\n"):
-                file.write(f"\x1b[{len(title_lines) + up}A")
-                _draw_title(title_lines, file, dim=True)
-                start = index // height * height
-                _draw_options(options[start : start + height], file, index, selected, start=start, multiple=multiple, width=width, dim=True)
-                file.write("\x1b[0J")
-                submitted = True
-                return sorted(selected) if multiple else [index]
-
-            if key in (b"", b"\x04"):
-                raise EOFError
-            if key == b"\x1b":
-                raise ChoiceCancelled("用户取消选择")
-
-            if key in (b"\x1b[A", b"\x1bOA"):
-                index = (index - 1) % len(options)
-            elif key in (b"\x1b[B", b"\x1bOB"):
-                index = (index + 1) % len(options)
-            elif key in (b"\x1b[D", b"\x1bOD"):
-                index = max(0, index - height)
-            elif key in (b"\x1b[C", b"\x1bOC"):
-                index = min(len(options) - 1, index + height)
-            elif multiple and key == b" ":
-                selected.symmetric_difference_update({index})
-            elif multiple and key == b"a":
-                selected = set() if len(selected) == len(options) else set(range(len(options)))
-            else:
-                continue
-            file.write(f"\x1b[{up}A")
-            _draw_page(options, file, index, selected, height=height, multiple=multiple, width=width)
-    finally:
+    with cbreak(fd):
         try:
+            file.write("\x1b[?25l")
+            _draw_title(title_lines, file)
+            _draw_page(options, file, index, selected, height=height, multiple=multiple, width=width)
+            hint_drawn = True
+            while True:
+                key = read_key(fd)
+
+                if key == ENTER:
+                    file.write(f"\x1b[{len(title_lines) + up}A")
+                    _draw_title(title_lines, file, dim=True)
+                    start = index // height * height
+                    _draw_options(options[start : start + height], file, index, selected, start=start, multiple=multiple, width=width, dim=True)
+                    file.write("\x1b[0J")
+                    submitted = True
+                    return sorted(selected) if multiple else [index]
+
+                if key == EOF:
+                    raise EOFError
+                if key == ESCAPE:
+                    raise ChoiceCancelled("用户取消选择")
+
+                if key == UP:
+                    index = (index - 1) % len(options)
+                elif key == DOWN:
+                    index = (index + 1) % len(options)
+                elif key == LEFT:
+                    index = max(0, index - height)
+                elif key == RIGHT:
+                    index = min(len(options) - 1, index + height)
+                elif multiple and key == " ":
+                    selected.symmetric_difference_update({index})
+                elif multiple and key == "a":
+                    selected = set() if len(selected) == len(options) else set(range(len(options)))
+                else:
+                    continue
+                file.write(f"\x1b[{up}A")
+                _draw_page(options, file, index, selected, height=height, multiple=multiple, width=width)
+        finally:
             if hint_drawn and not submitted:
                 start = index // height * height
                 visible = min(height, len(options) - start)
                 file.write(f"\x1b[{up - visible}A\r\x1b[0J")
             file.write("\x1b[?25h")
             file.flush()
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, settings)
 
 
 def _draw_options(options, file, index, selected, *, start, multiple, width, dim=False) -> None:

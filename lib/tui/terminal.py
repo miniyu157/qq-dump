@@ -1,12 +1,12 @@
-"""选择与确认共用的终端输入、文本处理与结果类型。"""
+"""选择与确认共用的终端能力判断、文本处理与结果类型。"""
 
 import os
 import re
-import select
+import sys
 import unicodedata
 from collections.abc import Sequence
 
-__all__ = ["PINK", "ChoiceCancelled", "divider_line", "hint", "read_key", "split_title", "strip_styles", "terminal_width", "truncate"]
+__all__ = ["PINK", "ChoiceCancelled", "ansi_supported", "divider_line", "hint", "split_title", "strip_styles", "terminal_width", "truncate"]
 
 PINK = "\033[38;2;255;174;193m"
 
@@ -63,24 +63,26 @@ def truncate(text: str, width: int) -> str:
     return "".join(parts) + "…\x1b[0m"
 
 
-def read_key(fd: int) -> bytes:
-    """读取一个按键；方向键等转义序列一次读满，单独的 ESC 或无法识别的序列返回 ESC。"""
-    data = os.read(fd, 1)
-    if data != b"\x1b":
-        return data
-    ready, _, _ = select.select([fd], [], [], 0.05)
-    if not ready:
-        return data
-    second = os.read(fd, 1)
-    if second not in (b"[", b"O"):
-        return data
-    ready, _, _ = select.select([fd], [], [], 0.05)
-    if not ready:
-        return data
-    third = os.read(fd, 1)
-    if not third.isalpha():
-        return data
-    return data + second + third
+def ansi_supported(file) -> bool:
+    """输出流能否解释 ANSI 序列；Windows 控制台未启用 VT 处理时返回 False，其余平台视为支持。"""
+    if sys.platform != "win32":
+        return True
+
+    import ctypes
+    import msvcrt
+
+    try:
+        handle = msvcrt.get_osfhandle(file.fileno())
+    except (AttributeError, OSError, ValueError):
+        return False
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.GetConsoleMode.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32))
+    kernel32.GetConsoleMode.restype = ctypes.c_int
+    mode = ctypes.c_uint32()
+    if not kernel32.GetConsoleMode(ctypes.c_void_p(handle), ctypes.byref(mode)):
+        return False
+    return bool(mode.value & 0x0004)  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
 
 
 def hint(parts: Sequence[str], width: int) -> str:
