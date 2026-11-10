@@ -6,7 +6,7 @@ import sys
 import unicodedata
 from collections.abc import Sequence
 
-__all__ = ["PINK", "ChoiceCancelled", "ansi_supported", "divider_line", "hint", "split_title", "strip_styles", "terminal_width", "truncate"]
+__all__ = ["PINK", "ChoiceCancelled", "ansi_supported", "divider_line", "enable_ansi", "hint", "split_title", "strip_styles", "terminal_width", "truncate"]
 
 PINK = "\033[38;2;255;174;193m"
 
@@ -67,22 +67,42 @@ def ansi_supported(file) -> bool:
     """输出流能否解释 ANSI 序列；Windows 控制台未启用 VT 处理时返回 False，其余平台视为支持。"""
     if sys.platform != "win32":
         return True
+    return _set_vt_processing(file, enable=False)
 
+
+def enable_ansi(file) -> bool:
+    """让输出流解释 ANSI 序列，返回之后能否解释；其余平台视为支持。
+
+    Windows 控制台未启用 VT 处理时尝试开启，会修改该控制台的输出模式且不在退出时恢复；
+    旧版控制台拒绝开启或输出流不是控制台时返回 False。
+    """
+    if sys.platform != "win32":
+        return True
+    return _set_vt_processing(file, enable=True)
+
+
+def _set_vt_processing(file, *, enable: bool) -> bool:
+    """读取控制台输出模式，enable 为真且未开启时尝试开启 VT 处理；返回最终是否开启。"""
     import ctypes
     import msvcrt
 
+    vt_processing = 0x0004  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
     try:
-        handle = msvcrt.get_osfhandle(file.fileno())
+        handle = ctypes.c_void_p(msvcrt.get_osfhandle(file.fileno()))
     except (AttributeError, OSError, ValueError):
         return False
 
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.GetConsoleMode.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32))
     kernel32.GetConsoleMode.restype = ctypes.c_int
+    kernel32.SetConsoleMode.argtypes = (ctypes.c_void_p, ctypes.c_uint32)
+    kernel32.SetConsoleMode.restype = ctypes.c_int
     mode = ctypes.c_uint32()
-    if not kernel32.GetConsoleMode(ctypes.c_void_p(handle), ctypes.byref(mode)):
+    if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
         return False
-    return bool(mode.value & 0x0004)  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    if mode.value & vt_processing:
+        return True
+    return enable and bool(kernel32.SetConsoleMode(handle, mode.value | vt_processing))
 
 
 def hint(parts: Sequence[str], width: int) -> str:

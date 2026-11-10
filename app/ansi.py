@@ -1,13 +1,18 @@
-"""终端 ANSI 样式，按输出流分为 out 与 err 两组；对应流非 TTY 时该组全部为空。"""
+"""终端 ANSI 样式，按输出流分为 out 与 err 两组；对应流非 TTY 或无法解释 ANSI 时该组全部为空。
+
+导入时会为 Windows 控制台开启 VT 处理，修改后的控制台模式不在退出时恢复。
+"""
 
 import sys
+
+from lib.tui.terminal import enable_ansi
 
 __all__ = ["err", "out"]
 
 
 class _Styles:
     def __init__(self, stream) -> None:
-        on = stream.isatty()
+        on = stream.isatty() and enable_ansi(stream)
         self.TTY = on
         self.RESET = "\033[0m" if on else ""
         self.BOLD = "\033[1m" if on else ""
