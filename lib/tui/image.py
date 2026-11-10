@@ -1,15 +1,17 @@
 """终端图像渲染：Kitty 图形协议、半块字符像素画与真彩色 ASCII 字符画。"""
 
 import base64
-import fcntl
 import io
 import os
 import shutil
 import struct
 import sys
-import termios
 
 from PIL import Image
+
+if sys.platform != "win32":
+    import fcntl
+    import termios
 
 __all__ = ["render"]
 
@@ -105,7 +107,12 @@ def _ascii_lines(source: str | bytes, width: int) -> list[str]:
 
 
 def _cell_ratio() -> float:
-    """终端单元格的高宽比；缺省依次尝试 stdout、stderr 与 /dev/tty，取不到像素尺寸时按 2 处理。"""
+    """终端单元格的高宽比；缺省依次尝试 stdout、stderr 与 /dev/tty，取不到像素尺寸时按 2 处理。
+
+    Windows 控制台不提供像素尺寸，直接按 2 处理。
+    """
+    if sys.platform == "win32":
+        return 2.0
     for stream in (sys.stdout, sys.stderr):
         try:
             ratio = _ratio_from(stream.fileno())

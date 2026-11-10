@@ -65,9 +65,10 @@ def complete_database_dir(args: argparse.Namespace, *, attr: str, databases: Seq
 def _decrypt_to_temp(args: argparse.Namespace, names: list[str]) -> Path:
     as_root = prepare_access(args.root_dir, args.user, decrypting=True)
 
-    # 临时数据库优先放在 tmpfs，创建失败时退回系统临时目录；取消选择经 sys.exit 退出时由 atexit 清理
+    # POSIX 下临时数据库优先放在 tmpfs，创建失败时退回系统临时目录；Windows 的 /tmp 会落到当前盘根目录，直接用系统临时目录
+    # 取消选择经 sys.exit 退出时由 atexit 清理
     try:
-        temp_dir = tempfile.TemporaryDirectory(prefix="qq-dump-", dir="/tmp")
+        temp_dir = tempfile.TemporaryDirectory(prefix="qq-dump-", dir=None if sys.platform == "win32" else "/tmp")
     except OSError:
         temp_dir = tempfile.TemporaryDirectory(prefix="qq-dump-")
     atexit.register(temp_dir.cleanup)
