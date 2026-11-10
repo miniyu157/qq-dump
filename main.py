@@ -316,6 +316,11 @@ def main() -> None:
     from app.config import resolve_options
     from app.scripts import set_sudo_notice, set_verbose
 
+    # Windows 重定向时默认按 ANSI 代码页编码，中文输出与 UTF-8 下游不一致；控制台输出不受影响
+    if sys.platform == "win32":
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+
     common = argparse.ArgumentParser(add_help=False)
     # 公共选项可位于子命令前后；SUPPRESS 防止子解析器默认值覆盖此前已解析的取值
     common.add_argument("-u", "--user", default=argparse.SUPPRESS)
