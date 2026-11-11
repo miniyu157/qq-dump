@@ -43,7 +43,7 @@ def cmd_db(args: argparse.Namespace) -> None:
 
     failed = False
     for record, name_format in zip(records, name_formats, strict=True):
-        if not decrypt(record, args.output_dir, name_format, args.files, skip_empty=args.skip_empty, as_root=as_root):
+        if not decrypt(record, args.output_dir, name_format, args.files, skip_empty=args.skip_empty, copy_plain=args.copy_plain, as_root=as_root):
             failed = True
 
     if failed:
@@ -245,6 +245,7 @@ def help_text() -> str:
     {out.BOLD}-f, --name-format <模版>{out.RESET}            输出文件名模版，斜杠表示目录层
                                         {out.FAINT}(默认: {{user}}.{{uin}}/{{filename}}){out.RESET}
     {out.BOLD}--skip-empty{out.RESET}                        跳过文件过小的数据库
+    {out.BOLD}--copy-plain{out.RESET}                        复制未加密的数据库 {out.FAINT}(默认: 提示后跳过){out.RESET}
 
 {_title}子命令 (解析与导出):{out.RESET}
   {out.HL}web{out.RESET} {out.FAINT}[-p]{out.RESET}                              启动本地 WebUI
@@ -333,6 +334,7 @@ def main() -> None:
     db_parser.add_argument("files", nargs="*")
     db_parser.add_argument("-f", "--name-format", default="{user}.{uin}/{filename}")
     db_parser.add_argument("--skip-empty", action="store_true")
+    db_parser.add_argument("--copy-plain", action="store_true")
     db_parser.set_defaults(func=cmd_db)
 
     sub.add_parser("check", parents=[common]).set_defaults(func=cmd_check)

@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 
@@ -63,10 +64,33 @@ LOCK_REF = f"2nd reference to page {LOCK_PAGE}"
 LOCK_REF_RE = re.compile(rf"page (\d+) (?:cell (\d+)|(right child)): {LOCK_REF}$")
 
 
-def db_cipher(filename: str, key: str | None, gpro_key: str | None) -> tuple[str, str] | None:
-    if Path(filename).name.startswith("gpro_v1-6_"):
-        return (gpro_key, "HMAC_SHA512") if gpro_key else None
-    return (key, "HMAC_SHA1") if key else None
+def key_rule(text: str) -> tuple[str, str, str]:
+    """解析 -k 的 [模式=]密钥[:算法]，返回 (模式, 密钥, 算法)"""
+    pattern, _, rest = text.rpartition("=")
+    key, _, hmac_algorithm = rest.partition(":")
+    hmac_algorithm = hmac_algorithm or "HMAC_SHA1"
+    if hmac_algorithm not in PAGE_CIPHER:
+        raise argparse.ArgumentTypeError(f"不支持的 HMAC 算法: {hmac_algorithm}")
+    return pattern or "*", key, hmac_algorithm
+
+
+def db_cipher(filename: str, rules: list[tuple[str, str, str]]) -> tuple[str, str] | None:
+    """按顺序取首条文件名模式匹配的规则，返回其密钥与 HMAC 算法；无匹配或该规则的密钥为空时返回 None"""
+    for pattern, key, hmac_algorithm in rules:
+        if fnmatchcase(Path(filename).name, pattern):
+            return (key, hmac_algorithm) if key else None
+    return None
+
+
+def plain_header_size(db_path: Path) -> int | None:
+    """明文库返回 SQLite 文件头之前的字节数，即 0 或 QQ 文件头的长度；不是明文库时返回 None"""
+    with db_path.open("rb") as src:
+        header = src.read(HEADER_SIZE + len(SQLITE_HEADER))
+    if header.startswith(SQLITE_HEADER):
+        return 0
+    if header[HEADER_SIZE:].startswith(SQLITE_HEADER):
+        return HEADER_SIZE
+    return None
 
 
 def safe_output_path(output: str | Path, out_name: str) -> str:
@@ -108,15 +132,15 @@ def resolve_hmac_algorithm(tmp_path: str, key: str, hmac_algorithm: str, *, verb
     raise RuntimeError(sqlcipher_reason(checked.returncode, stderr))
 
 
-def copy_body(db_path: Path, tmp_path: str) -> None:
-    """复制剥除明文头后的密文；进度按已复制字节计算，总量确定"""
-    total = db_path.stat().st_size - HEADER_SIZE
+def copy_body(db_path: Path, tmp_path: str, header_size: int = HEADER_SIZE) -> None:
+    """复制剥除文件头后的内容；进度按已复制字节计算，总量确定"""
+    total = db_path.stat().st_size - header_size
     copied = 0
     next_report = time.monotonic() + PROGRESS_DELAY
     reported = False
     try:
         with db_path.open("rb") as src, open(tmp_path, "wb") as dst:
-            src.seek(HEADER_SIZE)
+            src.seek(header_size)
             while chunk := src.read(COPY_CHUNK):
                 dst.write(chunk)
                 copied += len(chunk)
@@ -245,16 +269,40 @@ def relocate_lock_page(tmp_path: str, key: str, hmac_algorithm: str, *, verbose:
         write_page(handle, parent, encrypted + page_mac(encrypted, parent, hmac_key, hmac_algorithm) + raw[mac_at + mac_size :])
 
 
-def db_decrypt(db_path: Path, out_path: str, key: str, hmac_algorithm: str, *, verbose: bool = False) -> None:
-    """解密 db_path 及其 -wal 到 out_path；剥头副本与导出中的库放在输出目录下的隐藏临时目录，导出成功后才替换 out_path"""
+def make_work_dir(db_path: Path, out_path: str) -> Path:
+    """校验输出路径与剩余空间，在输出目录下创建隐藏临时目录并返回；由调用方删除"""
     if Path(out_path).resolve() == db_path.resolve():
         raise ValueError("输出路径不能与源数据库相同")
     if Path(out_path).is_dir():
         raise ValueError("输出路径是目录，拒绝覆盖")
-    with db_path.open("rb") as src:
-        header = src.read(HEADER_SIZE + len(SQLITE_HEADER))
-    if header.startswith(SQLITE_HEADER) or header[HEADER_SIZE:].startswith(SQLITE_HEADER):
-        raise ValueError("文件不是加密库 (检测到明文 SQLite 文件头)")
+    size = db_path.stat().st_size
+    out_dir = Path(out_path).parent
+    out_dir.mkdir(parents=True, exist_ok=True)
+    free = shutil.disk_usage(out_dir).free
+    if free < size:
+        raise RuntimeError(f"输出目录空间不足: 临时副本需要 {size / MIB:.0f} MiB，可用 {free / MIB:.0f} MiB")
+    return Path(tempfile.mkdtemp(dir=out_dir, prefix=f".{Path(out_path).name}."))
+
+
+def copy_plain(db_path: Path, out_path: str, header_size: int) -> None:
+    """复制明文库 db_path 及其 -wal 到 out_path，剥除 header_size 字节的文件头；复制完成后才替换 out_path"""
+    work = make_work_dir(db_path, out_path)
+    tmp_path = str(work / "body")
+    wal = db_path.with_name(f"{db_path.name}-wal")
+    try:
+        copy_body(db_path, tmp_path, header_size)
+        if wal.is_file():
+            shutil.copyfile(wal, f"{tmp_path}-wal")
+            checked = subprocess.run(["sqlcipher", tmp_path], input=b"PRAGMA wal_checkpoint(TRUNCATE);\n", capture_output=True, check=False)
+            if checked.returncode != 0:
+                raise RuntimeError(sqlcipher_reason(checked.returncode, checked.stderr.decode(errors="replace")))
+        os.replace(tmp_path, out_path)
+    finally:
+        shutil.rmtree(work)
+
+
+def db_decrypt(db_path: Path, out_path: str, key: str, hmac_algorithm: str, *, verbose: bool = False) -> None:
+    """解密 db_path 及其 -wal 到 out_path；剥头副本与导出中的库放在输出目录下的隐藏临时目录，导出成功后才替换 out_path"""
     size = db_path.stat().st_size
     # 迁移锁页要先复制整库并跑一遍 quick_check，缺少 openssl 时在开销发生前报错
     has_lock_page = size >= HEADER_SIZE + LOCK_PAGE * PAGE_SIZE
@@ -263,14 +311,9 @@ def db_decrypt(db_path: Path, out_path: str, key: str, hmac_algorithm: str, *, v
             log("数据库超过 1 GiB，准备临时副本并检查锁页 ...")
         if shutil.which("openssl") is None:
             raise RuntimeError("超过 1 GiB 的库需要 openssl 迁移锁页，未找到 openssl")
-    out_dir = Path(out_path).parent
-    out_dir.mkdir(parents=True, exist_ok=True)
-    free = shutil.disk_usage(out_dir).free
-    if free < size:
-        raise RuntimeError(f"输出目录空间不足: 临时副本需要 {size / MIB:.0f} MiB，可用 {free / MIB:.0f} MiB")
 
     # 导出文件由 sqlcipher 按 umask 创建，sudo 运行时其他用户仍可读取
-    work = Path(tempfile.mkdtemp(dir=out_dir, prefix=f".{Path(out_path).name}."))
+    work = make_work_dir(db_path, out_path)
     tmp_path, tmp_out = str(work / "body"), str(work / "out")
     wal = db_path.with_name(f"{db_path.name}-wal")
     try:
@@ -297,16 +340,79 @@ def sqlcipher_reason(code: int, stderr: str) -> str:
     return f"sqlcipher 失败 ({code}): {lines[-1].strip() if lines else '无输出'}"
 
 
+def help_text() -> str:
+    """返回唯一的帮助文本；stdout 不是终端时移除其中的 ANSI 样式"""
+    prog = Path(sys.argv[0]).name
+    text = f"""\033[1m解密 QQ NT 数据库文件 -- 导出为标准布局的明文 SQLite 库\033[0m
+
+\033[1;4m用法:\033[0m
+  \033[1m{prog}\033[0m -d <目录> [选项] [文件...]
+
+\033[1;4m参数:\033[0m
+  \033[1m[文件...]\033[0m                         要解密的文件名 \033[2m(默认: 目录中的全部 .db)\033[0m
+
+\033[1;4m选项:\033[0m
+  \033[1m-d, --db-dir <目录>\033[0m               数据库目录
+  \033[1m-k, --key <[模式=]密钥[:算法]>\033[0m    密钥规则，可重复
+  \033[1m-o, --output-dir <目录=.>\033[0m         输出目录 \033[2m(默认: 当前目录)\033[0m
+  \033[1m-f, --name-format <模版>\033[0m          输出文件名模版，斜杠表示目录层 \033[2m(默认: {{filename}})\033[0m
+      \033[1m--skip-empty\033[0m                  跳过文件过小的数据库
+      \033[1m--copy-plain\033[0m                  复制明文库 \033[2m(默认: 提示后跳过)\033[0m
+  \033[1m-v, --verbose\033[0m                     显示详细调试信息
+  \033[1m-h, --help\033[0m                        显示本帮助
+
+\033[1;4m密钥规则:\033[0m
+  格式为 [模式=]密钥[:算法]，可重复指定；密钥可由同目录的 get_keys.py 取得。
+  模式是文件名 glob，省略时匹配全部文件；每个文件使用首条模式匹配的规则，专用规则须写在通配规则之前。
+  密钥不能含 = 与 :，留空表示匹配的文件没有可用密钥。
+  算法为 HMAC_SHA1 或 HMAC_SHA512，省略时为 HMAC_SHA1；校验失败时改试另一种。
+
+\033[1;4m明文库:\033[0m
+  未加密的 SQLite 文件不需要密钥，带有 1024 字节 QQ 文件头的也按明文库处理。
+  默认提示后跳过，不计入失败；开启 --copy-plain 时复制到输出目录，剥除 QQ 文件头并合并 -wal 中的数据。
+
+\033[1;4m退出码:\033[0m
+  \033[1m0\033[0m  全部文件已导出，或按 --skip-empty、明文库规则跳过
+  \033[1m1\033[0m  至少一个文件失败，或未找到 sqlcipher
+  \033[1m2\033[0m  参数错误
+
+\033[1;4m示例:\033[0m
+  解密目录中的全部 .db
+  {prog} -d <目录> -k <密钥> -o out
+
+  只解密指定文件，并指定算法
+  {prog} -d <目录> -k <密钥>:HMAC_SHA512 gpro_v1-6_<uid>.db
+
+  gpro 库与其余库使用不同的密钥
+  {prog} -d <目录> -k 'gpro_v1-6_*.db=<gpro 密钥>:HMAC_SHA512' -k <密钥>
+
+  连同明文库一并导出，每个库单独一个目录
+  {prog} -d <目录> -k <密钥> --copy-plain -o out -f '{{filename}}/data.db'
+"""
+    return text if sys.stdout.isatty() else re.sub(r"\033\[[0-9;]*m", "", text)
+
+
+class HelpParser(argparse.ArgumentParser):
+    """帮助文本自持，argparse 只负责 -h 的触发与退出"""
+
+    def format_help(self) -> str:
+        return help_text()
+
+    def format_usage(self) -> str:
+        """参数错误时不输出 argparse 生成的 usage，只保留错误消息"""
+        return ""
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="解密 QQ NT 数据库文件")
-    parser.add_argument("-d", "--db-dir", required=True, help="数据库目录")
-    parser.add_argument("-k", "--key", help="数据库密钥")
-    parser.add_argument("-g", "--gpro-key", help="gpro 数据库密钥")
-    parser.add_argument("files", nargs="*", metavar="file", help="要解密的文件名；省略时解密全部 .db")
-    parser.add_argument("-o", "--output-dir", default=".", help="输出目录，默认为 .")
-    parser.add_argument("-f", "--name-format", default="{filename}", help="输出文件名模版，斜杠表示目录层，默认为 '{filename}'")
-    parser.add_argument("--skip-empty", action="store_true", help="跳过文件过小的数据库")
-    parser.add_argument("-v", "--verbose", action="store_true", help="显示详细调试信息")
+    parser = HelpParser()
+    parser.add_argument("-d", "--db-dir", required=True)
+    parser.add_argument("-k", "--key", action="append", type=key_rule, default=[])
+    parser.add_argument("files", nargs="*")
+    parser.add_argument("-o", "--output-dir", default=".")
+    parser.add_argument("-f", "--name-format", default="{filename}")
+    parser.add_argument("--skip-empty", action="store_true")
+    parser.add_argument("--copy-plain", action="store_true")
+    parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
     if shutil.which("sqlcipher") is None:
@@ -323,13 +429,22 @@ def main() -> None:
             log(f"无法解密 {name}: 文件不存在")
             failed += 1
             continue
-        cipher = db_cipher(name, args.key, args.gpro_key)
-        if cipher is None:
-            log(f"无法解密 {name}: 缺少可用密钥")
-            failed += 1
-            continue
-        key, hmac_algorithm = cipher
         try:
+            header_size = plain_header_size(db_path)
+            if header_size is not None:
+                if not args.copy_plain:
+                    log(f"{name} 是明文库，已跳过 (使用 --copy-plain 复制)")
+                    continue
+                log(f"正在复制明文库 {name} ...")
+                out_path = safe_output_path(args.output_dir, args.name_format.format(filename=name))
+                copy_plain(db_path, out_path, header_size)
+                continue
+            cipher = db_cipher(name, args.key)
+            if cipher is None:
+                log(f"无法解密 {name}: 缺少可用密钥")
+                failed += 1
+                continue
+            key, hmac_algorithm = cipher
             if args.skip_empty and db_path.stat().st_size < HEADER_SIZE + PAGE_SIZE:
                 continue
             log(f"正在解密 {name} ...")
