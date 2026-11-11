@@ -73,7 +73,7 @@ def _decrypt_to_temp(args: argparse.Namespace, names: list[str]) -> Path:
     atexit.register(temp_dir.cleanup)
     print(f"将解密到临时目录以使用: {err.HL}{temp_dir.name}{err.RESET}\n", file=sys.stderr)
 
-    record = _select_account(args, as_root=as_root)
+    record = _select_account(args, names, as_root=as_root)
 
     if not decrypt(record, temp_dir.name, "{filename}", names, copy_plain=True, as_root=as_root):
         warn_log(f"解密失败: {', '.join(names)}")
@@ -86,14 +86,14 @@ def _decrypt_to_temp(args: argparse.Namespace, names: list[str]) -> Path:
     return directory
 
 
-def _select_account(args: argparse.Namespace, *, as_root: bool) -> dict[str, object]:
-    """从匹配账号中读取用户选择，返回所选账号的密钥记录，不验证解密有效性。"""
+def _select_account(args: argparse.Namespace, names: list[str], *, as_root: bool) -> dict[str, object]:
+    """从匹配账号中读取用户选择，返回所选账号的密钥记录，不验证解密有效性；names 为本次要解密的库，用于在选项中标注大小。"""
     records = get_keys(args.user, args.qq, args.root_dir, as_root=as_root)
     if not records:
         warn_log("未找到可用的账号")
         sys.exit(1)
 
-    options = [f"{record['user']}.{record['uin']}" for record in records]
+    options = [_account_label(record, names) for record in records]
     title = f"{err.BOLD}{err.INFO}请选择账号:{err.RESET}"
     try:
         choice = choose(options, title=title)
@@ -104,3 +104,21 @@ def _select_account(args: argparse.Namespace, *, as_root: bool) -> dict[str, obj
         warn_log(str(exc))
         sys.exit(1)
     return records[choice]
+
+
+def _account_label(record: dict[str, object], names: list[str]) -> str:
+    """账号名后标注 names 中各库的源文件总大小；账号缺少其中的库时改为列出缺少的文件名。"""
+    sizes = {file["name"]: file["size"] for key in record["keys"] for file in key["files"]}
+    missing = [name for name in names if name not in sizes]
+    note = f"缺少 {', '.join(missing)}" if missing else _format_size(sum(sizes[name] for name in names))
+    return f"{record['user']}.{record['uin']}  {err.FAINT}{note}{err.RESET}"
+
+
+def _format_size(size: int) -> str:
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024**2:
+        return f"{size / 1024:.1f} KiB"
+    if size < 1024**3:
+        return f"{size / 1024**2:.1f} MiB"
+    return f"{size / 1024**3:.1f} GiB"

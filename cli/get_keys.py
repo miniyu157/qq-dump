@@ -2,8 +2,9 @@
 """读取 QQ NT 数据库密钥与账号信息。
 
 按 -u/-a 过滤账号标记，格式无效的标记静默跳过；对每个匹配的账号按 KEY_SOURCES 逐类匹配数据库文件并计算密钥。
-每条账号记录的 keys 按匹配优先级排列，每项含 name、pattern、key、hmac_algorithm 与 key_note；
-数据库目录中没有匹配文件的类别不列出，有匹配文件但无法取得密钥时 key 为 null。
+每条账号记录的 keys 按匹配优先级排列，每项含 name、pattern、key、hmac_algorithm、key_note 与 files；
+files 列出归属该类别的文件名与字节数，每个文件只归属首个模式匹配的类别。
+没有归属文件的类别不列出，有归属文件但无法取得密钥时 key 为 null。
 """
 
 import argparse
@@ -28,7 +29,7 @@ class KeySource(NamedTuple):
     # 文件名 glob，可引用账号记录的字段
     pattern: str
     hmac_algorithm: str
-    # (账号记录, 匹配的文件) -> (密钥, 写入 key_note 的附加信息)
+    # (账号记录, 归属该类别的文件) -> (密钥, 写入 key_note 的附加信息)
     read: Callable[[dict[str, str], list[Path]], tuple[str, dict[str, str]]]
 
 
@@ -131,9 +132,12 @@ def scan_accounts(root: Path, user: str | None = None, qq: str | None = None) ->
 def account_keys(account: dict[str, str], *, verbose: bool) -> list[dict[str, object]]:
     who = f"{account['user']}.{account['uin']}"
     keys = []
+    claimed = set()
     for source in KEY_SOURCES:
         pattern = source.pattern.format(**account)
-        files = sorted(Path(account["db_dir"]).glob(pattern))
+        # 文件归属首个模式匹配的类别，与 decrypt_db.py 取首条匹配规则一致
+        files = [path for path in sorted(Path(account["db_dir"]).glob(pattern)) if path not in claimed]
+        claimed.update(files)
         if not files:
             if verbose:
                 log(f"{PROG}: 用户 {who} 无 {source.name} 数据库，未取得 {source.name} 密钥")
@@ -144,7 +148,8 @@ def account_keys(account: dict[str, str], *, verbose: bool) -> list[dict[str, ob
             key, note = None, {}
             if verbose:
                 log(f"{PROG}: 用户 {who} 的 {source.name} 数据库 {exc}，未取得 {source.name} 密钥")
-        keys.append({"name": source.name, "pattern": pattern, "key": key, "hmac_algorithm": source.hmac_algorithm, "key_note": note})
+        sizes = [{"name": path.name, "size": path.stat().st_size} for path in files]
+        keys.append({"name": source.name, "pattern": pattern, "key": key, "hmac_algorithm": source.hmac_algorithm, "key_note": note, "files": sizes})
     return keys
 
 
@@ -169,8 +174,9 @@ def help_text() -> str:
 
 \033[1;4m输出:\033[0m
   每个匹配的账号一条记录，含 user、uin、uid、db_dir 与 keys。
-  keys 按匹配优先级列出各类数据库的 name、pattern、key、hmac_algorithm 与 key_note。
-  数据库目录中没有对应文件的类别不列出，有对应文件但无法取得密钥时 key 为 null。
+  keys 按匹配优先级列出各类数据库的 name、pattern、key、hmac_algorithm、key_note 与 files。
+  files 列出归属该类别的文件名与字节数，每个文件只归属首个模式匹配的类别。
+  没有归属文件的类别不列出，有归属文件但无法取得密钥时 key 为 null。
 
 \033[1;4m示例:\033[0m
   读取全部账号的密钥

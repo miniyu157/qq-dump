@@ -28,8 +28,9 @@ _CLI_DIR = Path(__file__).resolve().parents[1] / "cli"
 def get_keys(user: str | None, qq: str | None, root_dir: str | None, *, as_root: bool) -> list[dict[str, object]]:
     """每个匹配的账号返回一条记录，含 user、uid、uin、db_dir 与 keys；user、qq、root_dir 为 None 时不作为过滤条件传入。
 
-    keys 按匹配优先级列出各类数据库的文件名模式、密钥与 HMAC 算法，数据库目录中没有对应文件的类别不列出。
-    缺少 rand 时仍计算 nt 密钥；有对应文件但无法取得的密钥为 None。
+    keys 按匹配优先级列出各类数据库的文件名模式、密钥、HMAC 算法与 files；files 是归属该类别的文件名与字节数，
+    每个文件只归属首个模式匹配的类别，没有归属文件的类别不列出。
+    缺少 rand 时仍计算 nt 密钥；有归属文件但无法取得的密钥为 None。
     """
     command = _script("get_keys.py")
     if user is not None:
