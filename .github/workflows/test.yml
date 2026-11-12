@@ -1,0 +1,29 @@
+name: test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.x"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 版本号来自 git describe，需要完整历史与 tag
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install sqlcipher
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y sqlcipher
+      # 实机层需要本机的 QQ，不在 CI 中运行；Windows 上没有 sqlcipher，依赖它的用例显示为跳过
+      - name: Run tests
+        run: python -m unittest discover -s test -t test -v
