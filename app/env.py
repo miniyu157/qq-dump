@@ -6,7 +6,7 @@
 import os
 from pathlib import Path
 
-__all__ = ["ENV_FILE", "flag_setting", "path_setting"]
+__all__ = ["ENV_FILE", "flag_setting", "path_setting", "text_setting"]
 
 ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
@@ -35,6 +35,14 @@ def path_setting(name: str) -> str | None:
         return None
     path = Path(value).expanduser()
     return str(path if path.is_absolute() else ENV_FILE.parent / path)
+
+
+def text_setting(name: str) -> str | None:
+    """取文本配置项，原样返回；都未设置或值为空时返回 None。"""
+    value = os.environ.get(name)
+    if value is None:
+        value = _read_env_file().get(name)
+    return value or None
 
 
 def _read_env_file() -> dict[str, str]:

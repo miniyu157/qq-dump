@@ -7,9 +7,9 @@ import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
-from app.accounts import prepare_access
+from app.accounts import locate_data_root, prepare_access, read_keys
 from app.ansi import err
-from app.scripts import decrypt, get_keys
+from app.scripts import decrypt
 from app.utils import cancel_log, warn_log
 from lib.tui.choose import ChoiceCancelled, choose
 
@@ -62,7 +62,8 @@ def complete_database_dir(args: argparse.Namespace, *, attr: str, databases: Seq
 
 
 def _decrypt_to_temp(args: argparse.Namespace, names: list[str]) -> Path:
-    as_root = prepare_access(args.root_dir, args.user, decrypting=True)
+    args.platform, args.root_dir = locate_data_root(args.platform, args.root_dir)
+    as_root = prepare_access(args.root_dir, args.user, platform=args.platform, decrypting=True)
 
     # POSIX 下临时数据库优先放在 tmpfs，创建失败时退回系统临时目录；Windows 的 /tmp 会落到当前盘根目录，直接用系统临时目录
     # 取消选择经 sys.exit 退出时由 atexit 清理
@@ -88,7 +89,7 @@ def _decrypt_to_temp(args: argparse.Namespace, names: list[str]) -> Path:
 
 def _select_account(args: argparse.Namespace, names: list[str], *, as_root: bool) -> dict[str, object]:
     """从匹配账号中读取用户选择，返回所选账号的密钥记录，不验证解密有效性；names 为本次要解密的库，用于在选项中标注大小。"""
-    records = get_keys(args.user, args.qq, args.root_dir, as_root=as_root)
+    records = read_keys(args.user, args.qq, args.root_dir, platform=args.platform, key_cache=args.key_cache, as_root=as_root)
     if not records:
         warn_log("未找到可用的账号")
         sys.exit(1)

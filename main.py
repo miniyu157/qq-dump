@@ -19,21 +19,22 @@ VERSION_TAG = re.compile(r"v\d+(?:\.\d+)*(?=$|[- ])")
 
 def cmd_key(args: argparse.Namespace) -> None:
     """输出可用的密钥记录；被跳过的账号由 get_keys.py 警告，不影响退出码。"""
-    from app.accounts import prepare_access, valid_keys
+    from app.accounts import locate_data_root, prepare_access, read_keys, valid_keys
     from app.output import render_json
-    from app.scripts import get_keys
 
-    as_root = prepare_access(args.root_dir, args.user, decrypting=False)
-    render_json(valid_keys(get_keys(args.user, args.qq, args.root_dir, as_root=as_root)))
+    args.platform, args.root_dir = locate_data_root(args.platform, args.root_dir)
+    as_root = prepare_access(args.root_dir, args.user, platform=args.platform, decrypting=False)
+    render_json(valid_keys(read_keys(args.user, args.qq, args.root_dir, platform=args.platform, key_cache=args.key_cache, as_root=as_root)))
 
 
 def cmd_db(args: argparse.Namespace) -> None:
     """获取密钥，再逐账号解密。"""
-    from app.accounts import prepare_access, valid_keys
-    from app.scripts import decrypt, get_keys
+    from app.accounts import locate_data_root, prepare_access, read_keys, valid_keys
+    from app.scripts import decrypt
 
-    as_root = prepare_access(args.root_dir, args.user, decrypting=True)
-    records = valid_keys(get_keys(args.user, args.qq, args.root_dir, as_root=as_root))
+    args.platform, args.root_dir = locate_data_root(args.platform, args.root_dir)
+    as_root = prepare_access(args.root_dir, args.user, platform=args.platform, decrypting=True)
+    records = valid_keys(read_keys(args.user, args.qq, args.root_dir, platform=args.platform, key_cache=args.key_cache, as_root=as_root))
 
     # 账号字段在此展开；{filename} 留给 decrypt_db.py 按实际文件名填充。全部展开成功后才开始解密
     try:
@@ -231,21 +232,25 @@ def help_text() -> str:
 {_title}用法:{out.RESET}
   {out.BOLD}{prog}{out.RESET} [选项] [子命令=menu] [命令选项] [参数]
 
-{_title}选项 (全局):{out.RESET}
-  {out.BOLD}-u, --user <ID>{out.RESET}                       Android 用户 ID{out.RESET}
-  {out.BOLD}-a, --qq <uin/uid>{out.RESET}                    QQ uin 或 uid 文本{out.RESET}
-  {out.BOLD}-r, --root-dir <目录=/>{out.RESET}               扫描根目录 {out.FAINT}(默认: /){out.RESET}
-  {out.BOLD}-p, --profile-db <路径>{out.RESET}               profile_info.db 路径{out.RESET}
-  {out.BOLD}-n, --nt-msg-db <路径>{out.RESET}                nt_msg.db 路径{out.RESET}
+{_title}选项 (数据来源):{out.RESET} {out.FAINT}从哪里取哪些账号的数据与密钥，下文记作 [来源]{out.RESET}
+  {out.BOLD}-P, --platform <平台>{out.RESET}                 数据所属的平台 {out.FAINT}(默认: auto){out.RESET}
+  {out.BOLD}-r, --root-dir <目录>{out.RESET}                 数据根目录 {out.FAINT}(默认: 平台的默认位置){out.RESET}
+  {out.BOLD}-k, --key-cache <文件>{out.RESET}                密钥缓存文件 {out.FAINT}(默认: 仓库下 .cache/keys.json){out.RESET}
+  {out.BOLD}-u, --user <ID>{out.RESET}                       Android 用户 ID {out.FAINT}(仅 android){out.RESET}
+  {out.BOLD}-a, --qq <uin/uid>{out.RESET}                    QQ uin 或 uid 文本
+
+{_title}选项 (文件):{out.RESET}
+  {out.BOLD}-p, --profile-db <路径>{out.RESET}               profile_info.db 路径
+  {out.BOLD}-n, --nt-msg-db <路径>{out.RESET}                nt_msg.db 路径
   {out.BOLD}-o, --output-dir <目录=.>{out.RESET}             输出目录 {out.FAINT}(默认: 当前目录){out.RESET}
 
 {_title}子命令 (解密):{out.RESET}
-  {out.HL}key{out.RESET} {out.FAINT}[-u] [-a] [-r]{out.RESET}                    为选定用户计算数据库密钥
-  {out.HL}db{out.RESET} {out.FAINT}[-o] [-u] [-a] [-r]{out.RESET} [files...]     为选定用户解密数据库文件
+  {out.HL}key{out.RESET} {out.FAINT}[来源]{out.RESET}                            为选定账号取得数据库密钥
+  {out.HL}db{out.RESET} {out.FAINT}[来源] [-o]{out.RESET} [files...]             为选定账号解密数据库文件
     {out.BOLD}-f, --name-format <模版>{out.RESET}            输出文件名模版，斜杠表示目录层
                                         {out.FAINT}(默认: {{user}}.{{uin}}/{{filename}}){out.RESET}
-    {out.BOLD}--skip-empty{out.RESET}                        跳过文件过小的数据库
-    {out.BOLD}--copy-plain{out.RESET}                        复制未加密的数据库 {out.FAINT}(默认: 提示后跳过){out.RESET}
+    {out.BOLD}-e, --skip-empty{out.RESET}                    跳过文件过小的数据库
+    {out.BOLD}-c, --copy-plain{out.RESET}                    复制未加密的数据库 {out.FAINT}(默认: 提示后跳过){out.RESET}
 
 {_title}子命令 (解析与导出):{out.RESET}
   {out.HL}web{out.RESET} {out.FAINT}[-p]{out.RESET}                              启动本地 WebUI
@@ -263,10 +268,36 @@ def help_text() -> str:
     {out.BOLD}--chafa{out.RESET}                             改用 chafa 渲染头像
     {out.BOLD}--ascii{out.RESET}                             改用真彩色 ASCII 字符画
 
+{_title}平台:{out.RESET}
+  {out.FAINT}数据来自哪个系统的 QQ，决定数据根目录下的结构与取密钥的方式，
+  与运行本程序的系统无关。{out.RESET}
+  {out.BOLD}android{out.RESET}   密钥由账号信息与数据库文件头算出，不需要 QQ 运行
+  {out.BOLD}windows{out.RESET}   密钥先取自密钥缓存; 没有时从已登录的 QQ 进程内存扫描，
+            扫描须在运行该 QQ 的系统上进行
+  {out.BOLD}linux{out.RESET}     同 windows; 扫描通常需 root，无权时询问是否用 sudo 重试
+  {out.BOLD}auto{out.RESET}      指定了 -r 时按其下的结构识别; 识别不出或未指定时看运行系统:
+            Windows 为 windows，存在 /data/user 为 android，其余为 linux
+
+{_title}数据根目录:{out.RESET}
+  {out.BOLD}android{out.RESET}   默认为 /，其下为 data/user/<ID>/com.tencent.mobileqq
+  {out.BOLD}windows{out.RESET}   默认为 QQ 配置所指的 Tencent Files，其下为 <uin>/nt_qq/nt_db
+  {out.BOLD}linux{out.RESET}     默认为 ~/.config/QQ 或 flatpak 的 ~/.var/app/com.qq.QQ/config/QQ，
+            其下为 nt_qq_<哈希>/nt_db
+  {out.FAINT}默认位置只在对应的系统上提供; 找到多个时询问，找不到时须用 -r 指定。{out.RESET}
+
+{_title}密钥缓存:{out.RESET}
+  windows 与 linux 的密钥取得后自动存入密钥缓存; 之后处理同一份数据，
+  不再需要 QQ 运行与提权。android 的密钥每次由数据算出，不经缓存。
+  缓存是 key 输出的 JSON 记录数组，key 的输出也可以直接保存为缓存文件。
+  只试平台与 uin 都相同的密钥，经数据库验证通过才采用; 都不匹配时照常扫描。
+  密钥随设备而不同; 把缓存文件带到其他系统并用 -k 指定，可处理拷贝来的数据。
+
 {_title}环境变量:{out.RESET}
   {out.FAINT}命令行参数优先，其次为进程环境变量，再次为仓库根目录的 .env;
   .env 中的相对路径按仓库根目录解析，开关类变量取值 1/true/yes/on 为开启;{out.RESET}
+  {out.BOLD}QQDUMP_PLATFORM{out.RESET}                       同 -P, --platform
   {out.BOLD}QQDUMP_ROOT_DIR{out.RESET}                       同 -r, --root-dir
+  {out.BOLD}QQDUMP_KEY_CACHE{out.RESET}                      同 -k, --key-cache
   {out.BOLD}QQDUMP_PROFILE_DB{out.RESET}                     同 -p, --profile-db
   {out.BOLD}QQDUMP_NT_MSG_DB{out.RESET}                      同 -n, --nt-msg-db
   {out.BOLD}QQDUMP_SUDO_NOTICE{out.RESET}                    同 -s, --[no-]sudo-notice
@@ -316,7 +347,9 @@ def main() -> None:
     # 公共选项可位于子命令前后；SUPPRESS 防止子解析器默认值覆盖此前已解析的取值
     common.add_argument("-u", "--user", default=argparse.SUPPRESS)
     common.add_argument("-a", "--qq", default=argparse.SUPPRESS)
+    common.add_argument("-P", "--platform", choices=("auto", "android", "windows", "linux"), default=argparse.SUPPRESS)
     common.add_argument("-r", "--root-dir", dest="root_dir", default=argparse.SUPPRESS)
+    common.add_argument("-k", "--key-cache", dest="key_cache", default=argparse.SUPPRESS)
     common.add_argument("-p", "--profile-db", dest="profile_db", default=argparse.SUPPRESS)
     common.add_argument("-n", "--nt-msg-db", dest="nt_msg_db", default=argparse.SUPPRESS)
     common.add_argument("-s", "--sudo-notice", dest="sudo_notice", action=argparse.BooleanOptionalAction, default=argparse.SUPPRESS)
@@ -333,8 +366,8 @@ def main() -> None:
     db_parser = sub.add_parser("db", parents=[common])
     db_parser.add_argument("files", nargs="*")
     db_parser.add_argument("-f", "--name-format", default="{user}.{uin}/{filename}")
-    db_parser.add_argument("--skip-empty", action="store_true")
-    db_parser.add_argument("--copy-plain", action="store_true")
+    db_parser.add_argument("-e", "--skip-empty", action="store_true")
+    db_parser.add_argument("-c", "--copy-plain", action="store_true")
     db_parser.set_defaults(func=cmd_db)
 
     sub.add_parser("check", parents=[common]).set_defaults(func=cmd_check)

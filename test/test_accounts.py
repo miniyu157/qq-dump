@@ -20,9 +20,10 @@ class QQDirectoryAccessTests(unittest.TestCase):
         self.root = Path(temporary.name)
         self.users = self.root / "data" / "user"
         # 不依赖运行测试者的身份；目录权限错误在对应文件系统操作处模拟。
-        identity = patch("app.accounts.os.geteuid", return_value=1000)
-        identity.start()
-        self.addCleanup(identity.stop)
+        # Windows 没有 os.geteuid, 一并替换后 android 平台的检查在各系统上都能测
+        for target in (patch("app.accounts.os.geteuid", return_value=1000, create=True), patch("app.accounts.sys.platform", "linux")):
+            target.start()
+            self.addCleanup(target.stop)
 
     def _create_qq(self, user: str) -> Path:
         directory = self.users / user / "com.tencent.mobileqq"
@@ -31,24 +32,24 @@ class QQDirectoryAccessTests(unittest.TestCase):
 
     def _assert_missing(self, user: str | None = None) -> None:
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
-            prepare_access(str(self.root), user, decrypting=False)
+            prepare_access(str(self.root), user, platform="android", decrypting=False)
         self.assertEqual(raised.exception.code, 1)
 
     def test_readable_qq_does_not_require_sudo(self) -> None:
         self._create_qq("0")
-        self.assertIs(prepare_access(str(self.root), None, decrypting=False), False)
+        self.assertIs(prepare_access(str(self.root), None, platform="android", decrypting=False), False)
 
     def test_user_without_qq_does_not_force_sudo(self) -> None:
         self._create_qq("0")
         (self.users / "10").mkdir()
         for order in (("0", "10"), ("10", "0")):
             with self.subTest(order=order), patch("app.accounts.Path.iterdir", return_value=[self.users / user for user in order]):
-                self.assertIs(prepare_access(str(self.root), None, decrypting=False), False)
+                self.assertIs(prepare_access(str(self.root), None, platform="android", decrypting=False), False)
 
     def test_multiple_readable_qq_directories_do_not_require_sudo(self) -> None:
         self._create_qq("0")
         self._create_qq("10")
-        self.assertIs(prepare_access(str(self.root), None, decrypting=False), False)
+        self.assertIs(prepare_access(str(self.root), None, platform="android", decrypting=False), False)
 
     def test_missing_users_directory_exits(self) -> None:
         self._assert_missing()
@@ -75,12 +76,12 @@ class QQDirectoryAccessTests(unittest.TestCase):
     def test_users_listing_denied_requires_sudo(self) -> None:
         self._create_qq("0")
         with patch("app.accounts.Path.iterdir", side_effect=PermissionError("synthetic permission denial")):
-            self.assertIs(prepare_access(str(self.root), None, decrypting=False), True)
+            self.assertIs(prepare_access(str(self.root), None, platform="android", decrypting=False), True)
 
     def test_selected_user_does_not_require_listing_all_users(self) -> None:
         self._create_qq("0")
         with patch("app.accounts.Path.iterdir", side_effect=PermissionError("synthetic permission denial")):
-            self.assertIs(prepare_access(str(self.root), "0", decrypting=False), False)
+            self.assertIs(prepare_access(str(self.root), "0", platform="android", decrypting=False), False)
 
     def test_qq_stat_denied_requires_sudo_in_either_order(self) -> None:
         self._create_qq("0")
@@ -95,12 +96,12 @@ class QQDirectoryAccessTests(unittest.TestCase):
         with patch("app.accounts.Path.stat", stat):
             for order in (("0", "10"), ("10", "0")):
                 with self.subTest(order=order), patch("app.accounts.Path.iterdir", return_value=[self.users / user for user in order]):
-                    self.assertIs(prepare_access(str(self.root), None, decrypting=False), True)
+                    self.assertIs(prepare_access(str(self.root), None, platform="android", decrypting=False), True)
 
     def test_selected_qq_stat_denied_is_not_reported_missing(self) -> None:
         self._create_qq("0")
         with patch("app.accounts.Path.stat", side_effect=PermissionError("synthetic permission denial")):
-            self.assertIs(prepare_access(str(self.root), "0", decrypting=False), True)
+            self.assertIs(prepare_access(str(self.root), "0", platform="android", decrypting=False), True)
 
     def test_one_unreadable_uid_directory_requires_sudo(self) -> None:
         self._create_qq("0")
@@ -113,28 +114,28 @@ class QQDirectoryAccessTests(unittest.TestCase):
             return original_scandir(path)
 
         with patch("app.accounts.os.scandir", side_effect=scandir):
-            self.assertIs(prepare_access(str(self.root), None, decrypting=False), True)
-            self.assertIs(prepare_access(str(self.root), "0", decrypting=False), False)
-            self.assertIs(prepare_access(str(self.root), "10", decrypting=False), True)
+            self.assertIs(prepare_access(str(self.root), None, platform="android", decrypting=False), True)
+            self.assertIs(prepare_access(str(self.root), "0", platform="android", decrypting=False), False)
+            self.assertIs(prepare_access(str(self.root), "10", platform="android", decrypting=False), True)
 
     def test_missing_uid_directory_in_readable_qq_does_not_require_sudo(self) -> None:
         directory = self.users / "0" / "com.tencent.mobileqq"
         directory.mkdir(parents=True)
-        self.assertIs(prepare_access(str(self.root), None, decrypting=False), False)
+        self.assertIs(prepare_access(str(self.root), None, platform="android", decrypting=False), False)
 
     def test_missing_uid_directory_in_unreadable_qq_requires_sudo(self) -> None:
         directory = self.users / "0" / "com.tencent.mobileqq"
         directory.mkdir(parents=True)
         with patch("app.accounts.os.access", return_value=False):
-            self.assertIs(prepare_access(str(self.root), None, decrypting=False), True)
+            self.assertIs(prepare_access(str(self.root), None, platform="android", decrypting=False), True)
 
     def test_root_does_not_require_sudo_for_existing_qq(self) -> None:
         self._create_qq("0")
-        with patch("app.accounts.os.geteuid", return_value=0):
-            self.assertIs(prepare_access(str(self.root), None, decrypting=False), False)
+        with patch("app.accounts.os.geteuid", return_value=0, create=True):
+            self.assertIs(prepare_access(str(self.root), None, platform="android", decrypting=False), False)
 
     def test_root_still_exits_when_qq_is_missing(self) -> None:
-        with patch("app.accounts.os.geteuid", return_value=0):
+        with patch("app.accounts.os.geteuid", return_value=0, create=True):
             self._assert_missing()
 
 

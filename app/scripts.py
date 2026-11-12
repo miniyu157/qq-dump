@@ -1,6 +1,6 @@
 """cli/ 脚本的调用层: 构造命令行，按需经 sudo 以独立进程执行。
 
-cli/ 的每个脚本对应一个函数，子进程命令行在本模块构造。
+cli/ 的脚本经本模块的函数调用，子进程命令行在本模块构造。
 as_root 由调用方决定。
 """
 
@@ -8,13 +8,14 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any, NamedTuple
 
 from app.ansi import err
 from app.dependencies import SUDO
 from app.errors import AppError
 from app.utils import danger_log, require_binaries
 
-__all__ = ["decrypt", "get_keys", "set_sudo_notice", "set_verbose"]
+__all__ = ["DataLocation", "decrypt", "get_keys", "locate_data", "set_sudo_notice", "set_verbose"]
 
 # 由入口按 --sudo-notice 设置，_run 提权前据此决定是否输出提示
 _sudo_notice = False
@@ -25,20 +26,42 @@ _verbose = False
 _CLI_DIR = Path(__file__).resolve().parents[1] / "cli"
 
 
-def get_keys(user: str | None, qq: str | None, root_dir: str | None, *, as_root: bool) -> list[dict[str, object]]:
-    """每个匹配的账号返回一条记录，含 user、uid、uin、db_dir 与 keys；user、qq、root_dir 为 None 时不作为过滤条件传入。
+class DataLocation(NamedTuple):
+    """platform 为具体平台；roots 为该平台的数据根目录候选，可能为空或不止一个。"""
 
+    platform: str
+    roots: list[str]
+
+
+def locate_data(platform: str, root_dir: str | None) -> DataLocation:
+    """判定平台并列出数据根目录候选，不取密钥，不经 sudo 执行。
+
+    platform 可为 auto，此时由 get_keys.py 判定；root_dir 不为 None 时候选只有它，
+    为 None 时列出该平台默认位置上的数据根目录。
+    """
+    command = [*_script("get_keys.py"), "--locate", "-P", platform]
+    if root_dir is not None:
+        command += ["-r", root_dir]
+    location = _run_json(command, as_root=False)
+    return DataLocation(location["platform"], location["roots"])
+
+
+def get_keys(user: str | None, qq: str | None, root_dir: str, *, platform: str, key_cache: str | None, as_root: bool) -> list[dict[str, object]]:
+    """每个匹配的账号返回一条记录，含 platform、user、uid、uin、db_dir 与 keys；user、qq 为 None 时不过滤。
+
+    platform 为 android、windows 或 linux，决定数据根目录 root_dir 下的布局与取密钥的方式。两者由 locate_data 得到。
+    key_cache 为密钥缓存文件路径，须是已存在的文件，只读；windows 与 linux 下其中通过验证的密钥优先于扫描进程内存。不使用时传 None。
     keys 按匹配优先级列出各类数据库的文件名模式、密钥、HMAC 算法与 files；files 是归属该类别的文件名与字节数，
     每个文件只归属首个模式匹配的类别，没有归属文件的类别不列出。
     缺少 rand 时仍计算 nt 密钥；有归属文件但无法取得的密钥为 None。
     """
-    command = _script("get_keys.py")
+    command = [*_script("get_keys.py"), "-P", platform, "-r", root_dir]
     if user is not None:
         command += ["-u", user]
     if qq is not None:
         command += ["-a", qq]
-    if root_dir is not None:
-        command += ["-r", root_dir]
+    if key_cache is not None:
+        command += ["-k", key_cache]
     return _run_json(command, as_root=as_root)
 
 
@@ -78,7 +101,8 @@ def set_verbose(enabled: bool) -> None:
 
 
 def _run(command: list[str], *, as_root: bool, label: str | None = None, capture_stdout: bool = False) -> subprocess.CompletedProcess[str]:
-    """as_root 为真时检查 sudo 依赖并通过 sudo 执行。"""
+    """as_root 为真时检查 sudo 依赖并通过 sudo 执行；Windows 无 sudo，as_root 在此被忽略。"""
+    as_root = as_root and sys.platform != "win32"
     if as_root:
         require_binaries("提升权限", [SUDO])
         if _sudo_notice:
@@ -91,8 +115,8 @@ def _run(command: list[str], *, as_root: bool, label: str | None = None, capture
     return subprocess.run(argv, stdout=stdout, text=True, check=False)
 
 
-def _run_json(command: list[str], *, as_root: bool) -> list[dict[str, object]]:
-    """解析 stdout 的 JSON 数组；command 为 [解释器, 脚本, ...]。"""
+def _run_json(command: list[str], *, as_root: bool) -> Any:
+    """解析 stdout 的 JSON；command 为 [解释器, 脚本, ...]。"""
     result = _run(command, as_root=as_root, capture_stdout=True)
     if result.returncode != 0:
         raise AppError(f"{Path(command[1]).name} 失败 ({result.returncode})")

@@ -29,7 +29,7 @@ PILLOW = Module("pillow", "PIL", "运行 avatar 渲染头像时需要", "python-
 RICH = Module("rich", "rich", "仅 Table2d 研究套件需要", None)
 TOMLKIT = Module("tomlkit", "tomlkit", "运行 Tealina28/QQNT_Export 导出时需要", None)
 
-SUDO = Binary("sudo", "QQ 数据不可访问时需要", "sudo")
+SUDO = Binary("sudo", "QQ 数据不可访问或 Linux 下扫描 QQ 进程内存时需要", "sudo")
 SQLCIPHER = Binary("sqlcipher", "解密数据库时需要", "sqlcipher")
 # Termux 的 openssl 只含库，命令行工具在子包 openssl-tool
 OPENSSL = Binary("openssl", "解密超过 1 GiB 的数据库时需要", "openssl-tool")
