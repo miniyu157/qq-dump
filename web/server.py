@@ -24,9 +24,8 @@ from service.avatars import avatar, prepare_cache
 HOST = "127.0.0.1"
 PORT = 40080
 
-# 回环地址对本机其他程序与经 DNS rebinding 的网页同样可达：Host 必须是本服务的地址，
+# 回环地址对本机其他程序与经 DNS rebinding 的网页同样可达：Host 必须是本服务的地址 (见 Server.allowed_hosts)，
 # 且请求需带启动时生成的 token。token 经首次打开的 URL 传入，换成 SameSite=Strict 的 Cookie 后不再出现在地址栏
-ALLOWED_HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 TOKEN_COOKIE = "qqdump_token"
 
 # POST 请求体上限
@@ -41,9 +40,10 @@ TYPES = {
 
 
 class Server(ThreadingHTTPServer):
-    """客户端提前断开属于常态，不作为服务端异常记录；token 为本次启动的访问凭据"""
+    """客户端提前断开属于常态，不作为服务端异常记录；token 为本次启动的访问凭据，allowed_hosts 为可接受的 Host 取值"""
 
     token: str
+    allowed_hosts: set[str]
 
     def handle_error(self, request: object, client_address: tuple[str, int]) -> None:
         if isinstance(sys.exc_info()[1], ConnectionError):
@@ -51,8 +51,8 @@ class Server(ThreadingHTTPServer):
         super().handle_error(request, client_address)
 
 
-def create_server(profile_db: str, nt_db: str | None = None) -> ThreadingHTTPServer:
-    """创建固定端口的回环服务；nt_db 预留给后续任务"""
+def create_server(profile_db: str, nt_db: str | None = None, *, port: int = PORT) -> ThreadingHTTPServer:
+    """创建回环服务；port 为监听端口，0 表示由系统分配，实际端口见返回值的 server_address；nt_db 预留给后续任务"""
     prepare_cache()
     friends = [friend._asdict() for friend in load_friends(profile_db)]
     uins = {str(friend["uin"]) for friend in friends if friend["uin"] is not None}
@@ -119,7 +119,7 @@ def create_server(profile_db: str, nt_db: str | None = None) -> ThreadingHTTPSer
 
         def _host_allowed(self) -> bool:
             """Host 不是本服务地址时返回 403，阻断 DNS rebinding"""
-            if self.headers.get("Host") in ALLOWED_HOSTS:
+            if self.headers.get("Host") in self.server.allowed_hosts:
                 return True
             self.send_error(HTTPStatus.FORBIDDEN)
             return False
@@ -187,8 +187,10 @@ def create_server(profile_db: str, nt_db: str | None = None) -> ThreadingHTTPSer
         def log_message(self, fmt: str, *args: object) -> None:
             pass
 
-    server = Server((HOST, PORT), Handler)
+    server = Server((HOST, port), Handler)
     server.token = secrets.token_urlsafe(32)
+    bound_port = server.server_address[1]
+    server.allowed_hosts = {f"127.0.0.1:{bound_port}", f"localhost:{bound_port}"}
     return server
 
 
@@ -219,13 +221,13 @@ def _open_page(url: str) -> None:
         pass
 
 
-def serve(profile_db: str, nt_db: str | None = None) -> None:
-    """启动 WebUI，等待回车打开页面，阻塞到 Ctrl+C"""
+def serve(profile_db: str, nt_db: str | None = None, *, port: int = PORT) -> None:
+    """启动 WebUI，等待回车打开页面，阻塞到 Ctrl+C；port 含义同 create_server"""
     try:
-        server = create_server(profile_db, nt_db)
+        server = create_server(profile_db, nt_db, port=port)
     except OSError as exc:
         if exc.errno == errno.EADDRINUSE:
-            raise SystemExit(f"端口 {PORT} 已被占用") from exc
+            raise SystemExit(f"端口 {port} 已被占用") from exc
         raise
 
     host, port = server.server_address
