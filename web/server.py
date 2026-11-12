@@ -246,7 +246,9 @@ def serve(profile_db: str, nt_db: str | None = None) -> None:
                 pass
             else:
                 _open_page(url)
-        server_thread.join()
+        # Windows 上无超时的 join() 阻塞在锁上，期间不处理 SIGINT，Ctrl+C 无法退出；带超时的等待每次返回后才会抛出 KeyboardInterrupt
+        while server_thread.is_alive():
+            server_thread.join(0.5)
     except KeyboardInterrupt:
         pass
     finally:
