@@ -65,10 +65,17 @@ LOCK_REF_RE = re.compile(rf"page (\d+) (?:cell (\d+)|(right child)): {LOCK_REF}$
 
 
 def key_rule(text: str) -> tuple[str, str, str]:
-    """解析 -k 的 [模式=]密钥[:算法]，返回 (模式, 密钥, 算法)"""
-    pattern, _, rest = text.rpartition("=")
-    key, _, hmac_algorithm = rest.partition(":")
-    hmac_algorithm = hmac_algorithm or "HMAC_SHA1"
+    """解析 -k 的 [模式=]密钥[:算法]，返回 (模式, 密钥, 算法)
+
+    PC 的 raw_key 可含 = 与 :，因此模式取首个 = 之前的部分，算法只在末段以 :HMAC_ 开头时切出；
+    含 = 的密钥须写明模式 (如 *=)，否则 = 之前的部分会被当作模式。
+    """
+    pattern, sep, rest = text.partition("=")
+    if not sep:
+        pattern, rest = "", text
+    key, colon, hmac_algorithm = rest.rpartition(":")
+    if not colon or not hmac_algorithm.startswith("HMAC_"):
+        key, hmac_algorithm = rest, "HMAC_SHA1"
     if hmac_algorithm not in PAGE_CIPHER:
         raise argparse.ArgumentTypeError(f"不支持的 HMAC 算法: {hmac_algorithm}")
     return pattern or "*", key, hmac_algorithm
@@ -355,21 +362,25 @@ def help_text() -> str:
   \033[1m-d, --db-dir <目录>\033[0m               数据库目录
   \033[1m-k, --key <[模式=]密钥[:算法]>\033[0m    密钥规则，可重复
   \033[1m-o, --output-dir <目录=.>\033[0m         输出目录 \033[2m(默认: 当前目录)\033[0m
-  \033[1m-f, --name-format <模版>\033[0m          输出文件名模版，斜杠表示目录层 \033[2m(默认: {{filename}})\033[0m
-      \033[1m--skip-empty\033[0m                  跳过文件过小的数据库
-      \033[1m--copy-plain\033[0m                  复制明文库 \033[2m(默认: 提示后跳过)\033[0m
+  \033[1m-f, --name-format <模版>\033[0m          输出文件名模版，斜杠表示目录层
+                                    \033[2m(默认: {{filename}})\033[0m
+  \033[1m-e, --skip-empty\033[0m                  跳过文件过小的数据库
+  \033[1m-c, --copy-plain\033[0m                  复制明文库 \033[2m(默认: 提示后跳过)\033[0m
   \033[1m-v, --verbose\033[0m                     显示详细调试信息
   \033[1m-h, --help\033[0m                        显示本帮助
 
 \033[1;4m密钥规则:\033[0m
   格式为 [模式=]密钥[:算法]，可重复指定；密钥可由同目录的 get_keys.py 取得。
-  模式是文件名 glob，省略时匹配全部文件；每个文件使用首条模式匹配的规则，专用规则须写在通配规则之前。
-  密钥不能含 = 与 :，留空表示匹配的文件没有可用密钥。
+  模式是文件名 glob，省略时匹配全部文件；每个文件使用首条模式匹配的规则，
+  专用规则须写在通配规则之前。
+  密钥可含 : 与 =，含 = 时须写明模式 (如 '*=密钥')；
+  留空表示匹配的文件没有可用密钥。
   算法为 HMAC_SHA1 或 HMAC_SHA512，省略时为 HMAC_SHA1；校验失败时改试另一种。
 
 \033[1;4m明文库:\033[0m
   未加密的 SQLite 文件不需要密钥，带有 1024 字节 QQ 文件头的也按明文库处理。
-  默认提示后跳过，不计入失败；开启 --copy-plain 时复制到输出目录，剥除 QQ 文件头并合并 -wal 中的数据。
+  默认提示后跳过，不计入失败；开启 --copy-plain 时复制到输出目录，
+  剥除 QQ 文件头并合并 -wal 中的数据。
 
 \033[1;4m退出码:\033[0m
   \033[1m0\033[0m  全部文件已导出，或按 --skip-empty、明文库规则跳过
@@ -410,8 +421,8 @@ def main() -> None:
     parser.add_argument("files", nargs="*")
     parser.add_argument("-o", "--output-dir", default=".")
     parser.add_argument("-f", "--name-format", default="{filename}")
-    parser.add_argument("--skip-empty", action="store_true")
-    parser.add_argument("--copy-plain", action="store_true")
+    parser.add_argument("-e", "--skip-empty", action="store_true")
+    parser.add_argument("-c", "--copy-plain", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 

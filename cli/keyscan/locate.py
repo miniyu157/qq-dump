@@ -3,22 +3,28 @@
 覆盖 Windows 与 Linux, 两者布局不同:
   Windows 数据根目录  读 UserDataInfo.ini 的 UserDataSavePath, 其下为 "Tencent Files"
   Windows 账号库      <root>/<uin>/nt_qq/nt_db, 目录名即 uin, 无需 login.db 即可枚举
-  Linux 数据根目录    ~/.config/QQ; sudo 下回退到 $SUDO_USER 或 /home/* 的 QQ 目录
+  Linux 数据根目录    ~/.config/QQ, flatpak 安装为 ~/.var/app/com.qq.QQ/config/QQ, 两者结构相同;
+                      sudo 下回退到 $SUDO_USER 或 /home/* 的家目录
   Linux 账号库        <root>/nt_qq_<hash>/nt_db, hash = md5(md5(uid)+"nt_kernel")
                       目录名是哈希, 反推不出 uin/uid, 必须先解密 login.db 列账号
 
-调用方按操作系统选择: Windows 用 windows_accounts 与 windows_login_db; Linux 用
-linux_login_db_candidates 读账号, 再用 account_db_dir (配合读到的 uid) 定位。detect_data_root
-按当前操作系统给出默认的数据根目录, 返回 None 时由调用方要求显式指定 -r。
+布局只取决于数据来自哪个系统的 QQ, 与运行本程序的系统无关。调用方按数据布局选择: Windows
+布局用 windows_accounts 与 windows_login_db; Linux 布局用 linux_login_db_candidates 读账号,
+再用 account_db_dir (配合读到的 uid) 定位。detect_layout 按账号目录的形态识别布局;
+default_data_roots 列出某种布局在本机默认位置上的数据根目录, 没有或不止一个时由调用方要求
+显式指定 -r。
 """
 
 import hashlib
 import os
+import re
 import sys
 from pathlib import Path
 from typing import NamedTuple
 
-__all__ = ["PcAccount", "account_db_dir", "detect_data_root", "linux_login_db_candidates", "windows_accounts", "windows_login_db"]
+__all__ = ["PcAccount", "account_db_dir", "default_data_roots", "detect_layout", "linux_login_db_candidates", "windows_accounts", "windows_login_db"]
+
+_LINUX_ACCOUNT_DIR = re.compile(r"nt_qq_[0-9a-f]{32}")
 
 
 class PcAccount(NamedTuple):
@@ -34,14 +40,33 @@ class PcAccount(NamedTuple):
     db_dir: str
 
 
-def detect_data_root(*, verbose: bool = False) -> Path | None:
-    """按当前操作系统返回 QQ 数据根目录的默认猜测; 无法确定时返回 None。
+def detect_layout(root: Path) -> str | None:
+    """按 root 下账号目录的形态识别布局: 有 <uin>/nt_qq/nt_db 为 windows, 有 nt_qq_<哈希>/nt_db 为 linux。
 
+    两种都没有或 root 不可读时返回 None。
+    """
+    try:
+        names = [entry.name for entry in root.iterdir()]
+    except OSError:
+        return None
+    if any(name.isdigit() and (root / name / "nt_qq" / "nt_db").is_dir() for name in names):
+        return "windows"
+    if any(_LINUX_ACCOUNT_DIR.fullmatch(name) and (root / name / "nt_db").is_dir() for name in names):
+        return "linux"
+    return None
+
+
+def default_data_roots(layout: str, *, verbose: bool = False) -> list[Path]:
+    """返回 layout 布局 (windows / linux) 在本机默认位置上的 QQ 数据根目录。
+
+    本机不是对应的系统, 或默认位置上没有数据时返回空列表。Windows 至多一个; Linux 的原生安装与
+    flatpak 安装都有数据时返回两个。
     Linux 下 sudo 运行须回退到其他家目录时, 仅 verbose 为真才向 stderr 提示已跨入该目录。
     """
-    if sys.platform == "win32":
-        return _windows_data_root()
-    return _linux_data_root(verbose=verbose)
+    if layout == "windows":
+        root = _windows_data_root() if sys.platform == "win32" else None
+        return [root] if root is not None else []
+    return _linux_data_roots(verbose=verbose) if sys.platform != "win32" else []
 
 
 def _windows_data_root() -> Path | None:
@@ -73,50 +98,42 @@ def _windows_data_root() -> Path | None:
     return None
 
 
-def _linux_data_root(*, verbose: bool = False) -> Path | None:
-    """返回含 login.db 的 ~/.config/QQ, 兼容 sudo 运行。
+# 家目录下的数据根目录: 原生安装与 flatpak 安装
+_LINUX_ROOTS = (".config/QQ", ".var/app/com.qq.QQ/config/QQ")
 
-    sudo 下 HOME 为 /root, 其 .config/QQ 通常不存在或没有 login.db。故不信任裸目录, 要求它
-    确实存有 login.db; 当前 HOME 的不合格时, 依次回退到 $SUDO_USER 的家目录与 /home/* 中首个
-    合格的 QQ 目录, verbose 下向 stderr 提示已跨入其他账号的目录。都不合格时返回当前 HOME 的猜测,
-    由调用方报告 login.db 缺失。
+
+def _linux_data_roots(*, verbose: bool = False) -> list[Path]:
+    """返回家目录下含 login.db 的数据根目录, 兼容 sudo 运行。
+
+    sudo 下 HOME 为 /root, 其下通常没有 QQ 数据。故不信任裸目录, 要求它确实存有 login.db;
+    当前 HOME 下没有时, 依次回退到 $SUDO_USER 的家目录与 /home/* 中首个有数据的家目录,
+    verbose 下向 stderr 提示已跨入其他账号的目录。
     """
-    direct = Path.home() / ".config" / "QQ"
-    if _has_login_db(direct):
-        return direct
-    fallback = _sudo_user_config_qq() or _scan_home_config_qq()
-    if fallback is not None:
-        if verbose:
-            print(f"get_keys: 当前 HOME 下的 .config/QQ 无 login.db (可能是 sudo 运行), 改用 {fallback}", file=sys.stderr)
-        return fallback
-    return direct
+    for home in _candidate_homes():
+        roots = [home / relative for relative in _LINUX_ROOTS if _has_login_db(home / relative)]
+        if roots:
+            if verbose and home != Path.home():
+                print(f"get_keys: 当前 HOME 下没有 QQ 数据 (可能是 sudo 运行), 改用 {home}", file=sys.stderr)
+            return roots
+    return []
+
+
+def _candidate_homes() -> list[Path]:
+    """依次为当前 HOME、$SUDO_USER 的家目录 (未经 sudo 或为 root 时略过) 与 /home 下的各目录。"""
+    homes = [Path.home()]
+    user = os.environ.get("SUDO_USER")
+    if user and user != "root":
+        homes.append(Path("/home") / user)
+    try:
+        homes += sorted(Path("/home").iterdir())
+    except OSError:
+        pass
+    return homes
 
 
 def _has_login_db(root: Path) -> bool:
     """root 是否为已填充的 QQ 数据根目录, 即任一已知布局下存有 login.db。"""
     return any(path.is_file() for path in linux_login_db_candidates(root))
-
-
-def _sudo_user_config_qq() -> Path | None:
-    """$SUDO_USER 家目录下含 login.db 的 .config/QQ; 未经 sudo 或为 root 时返回 None。"""
-    user = os.environ.get("SUDO_USER")
-    if not user or user == "root":
-        return None
-    candidate = Path("/home") / user / ".config" / "QQ"
-    return candidate if _has_login_db(candidate) else None
-
-
-def _scan_home_config_qq() -> Path | None:
-    """扫描 /home/*/.config/QQ, 返回首个含 login.db 的目录。"""
-    try:
-        homes = sorted(Path("/home").iterdir())
-    except OSError:
-        return None
-    for home in homes:
-        candidate = home / ".config" / "QQ"
-        if _has_login_db(candidate):
-            return candidate
-    return None
 
 
 def windows_login_db(root: Path) -> Path:
