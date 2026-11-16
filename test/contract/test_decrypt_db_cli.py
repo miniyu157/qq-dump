@@ -189,6 +189,19 @@ class FailureTests(_DecryptCase):
         self.assertEqual(result.code, 1)
         self.assertIn("absent.db", result.err)
 
+    def test_database_directory_that_does_not_exist(self) -> None:
+        result = self.decrypt("-k", _NT_KEY, source=self.base / "absent-dir")
+        self.assertEqual(result.code, 1)
+        self.assertIn("absent-dir", result.err)
+        self.assertEqual(self.outputs(), [])
+
+    def test_directory_without_databases_is_reported_without_failing(self) -> None:
+        source = self.base / "no-databases"
+        source.mkdir(exist_ok=True)
+        result = self.decrypt("-k", _NT_KEY, source=source)
+        self.assertEqual(result.code, 0)
+        self.assertIn(".db", result.err)
+
     def test_output_name_leaving_the_output_directory_is_refused(self) -> None:
         for template in ("../{filename}", "sub/../../escaped.db", "."):
             with self.subTest(template=template):
@@ -235,7 +248,8 @@ class ArgumentTests(_DecryptCase):
         self.assertNotIn("\x1b[", result.out)
 
     def test_invalid_arguments_exit_with_2(self) -> None:
-        for args in ((), ("-d", str(self.source), "-k", f"{_NT_KEY}:HMAC_MD5"), ("-d", str(self.source), "--no-such-option")):
+        invalid = [("-k", f"{_NT_KEY}:HMAC_MD5"), ("--no-such-option",), ("-f", "{uin}/{filename}"), ("-f", "{filename"), ("-f", "{0}")]
+        for args in ((), *(("-d", str(self.source), *case) for case in invalid)):
             with self.subTest(args=args):
                 result = run_script("decrypt_db.py", *args)
                 self.assertEqual((result.code, result.out), (2, ""))

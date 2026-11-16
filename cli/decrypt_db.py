@@ -363,7 +363,7 @@ def help_text() -> str:
   \033[1m-k, --key <[模式=]密钥[:算法]>\033[0m    密钥规则，可重复
   \033[1m-o, --output-dir <目录=.>\033[0m         输出目录 \033[2m(默认: 当前目录)\033[0m
   \033[1m-f, --name-format <模版>\033[0m          输出文件名模版，斜杠表示目录层
-                                    \033[2m(默认: {{filename}})\033[0m
+                                    仅可用 {{filename}} \033[2m(默认: {{filename}})\033[0m
   \033[1m-e, --skip-empty\033[0m                  跳过文件过小的数据库
   \033[1m-c, --copy-plain\033[0m                  复制明文库 \033[2m(默认: 提示后跳过)\033[0m
   \033[1m-v, --verbose\033[0m                     显示详细调试信息
@@ -384,8 +384,8 @@ def help_text() -> str:
 
 \033[1;4m退出码:\033[0m
   \033[1m0\033[0m  全部文件已导出，或按 --skip-empty、明文库规则跳过
-  \033[1m1\033[0m  至少一个文件失败，或未找到 sqlcipher
-  \033[1m2\033[0m  参数错误
+  \033[1m1\033[0m  至少一个文件失败，数据库目录不存在，或未找到 sqlcipher
+  \033[1m2\033[0m  参数错误，含 --name-format 模版无效
 
 \033[1;4m示例:\033[0m
   解密目录中的全部 .db
@@ -425,13 +425,23 @@ def main() -> None:
     parser.add_argument("-c", "--copy-plain", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
+    try:
+        args.name_format.format(filename="")
+    except (KeyError, IndexError, AttributeError, ValueError):
+        parser.error(f"--name-format 模版无效: {args.name_format} (只能使用 {{filename}}，字面的花括号写作 {{{{ 与 }}}})")
 
     if shutil.which("sqlcipher") is None:
         log("错误: 未找到 sqlcipher，无法解密数据库")
         sys.exit(1)
 
     db_dir = Path(args.db_dir).expanduser().resolve()
+    if not db_dir.is_dir():
+        log(f"错误: 数据库目录不存在或不是目录: {db_dir}")
+        sys.exit(1)
     files = args.files or sorted(db.name for db in db_dir.glob("*.db"))
+    if not files:
+        log(f"{db_dir} 中没有 .db 文件")
+        return
 
     failed = 0
     for name in files:
