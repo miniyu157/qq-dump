@@ -12,7 +12,7 @@ from typing import Any, NamedTuple
 
 from app.ansi import err
 from app.dependencies import SUDO
-from app.errors import AppError
+from app.errors import AppError, ScriptFailed
 from app.utils import danger_log, require_binaries
 
 __all__ = ["DataLocation", "decrypt", "get_keys", "locate_data", "set_sudo_notice", "set_verbose"]
@@ -120,7 +120,7 @@ def _run_json(command: list[str], *, as_root: bool) -> Any:
     """解析 stdout 的 JSON；command 为 [解释器, 脚本, ...]。"""
     result = _run(command, as_root=as_root, capture_stdout=True)
     if result.returncode != 0:
-        raise AppError(f"{Path(command[1]).name} 失败 ({result.returncode})")
+        raise ScriptFailed(f"{Path(command[1]).name} 失败 ({result.returncode})")
     try:
         return json.loads(result.stdout)
     except json.JSONDecodeError as exc:

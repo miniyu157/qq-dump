@@ -15,6 +15,8 @@ import time
 from fnmatch import fnmatchcase
 from pathlib import Path
 
+PROG = Path(__file__).name
+
 
 def log(msg: str) -> None:
     print(msg, file=sys.stderr)
@@ -459,23 +461,23 @@ def main() -> None:
             parser.error(f"--key-file {args.key_file}: {exc}")
 
     if shutil.which("sqlcipher") is None:
-        log("错误: 未找到 sqlcipher，无法解密数据库")
+        log(f"{PROG}: 未找到 sqlcipher，无法解密数据库")
         sys.exit(1)
 
     db_dir = Path(args.db_dir).expanduser().resolve()
     if not db_dir.is_dir():
-        log(f"错误: 数据库目录不存在或不是目录: {db_dir}")
+        log(f"{PROG}: 数据库目录不存在或不是目录: {db_dir}")
         sys.exit(1)
     files = args.files or sorted(db.name for db in db_dir.glob("*.db"))
     if not files:
-        log(f"{db_dir} 中没有 .db 文件")
+        log(f"{PROG}: {db_dir} 中没有 .db 文件")
         return
 
     failed = 0
     for name in files:
         db_path = db_dir / name
         if not db_path.is_file():
-            log(f"无法解密 {name}: 文件不存在")
+            log(f"{PROG}: {name}: 文件不存在")
             failed += 1
             continue
         try:
@@ -490,7 +492,7 @@ def main() -> None:
                 continue
             cipher = db_cipher(name, args.key)
             if cipher is None:
-                log(f"无法解密 {name}: 缺少可用密钥")
+                log(f"{PROG}: {name}: 缺少可用密钥")
                 failed += 1
                 continue
             key, hmac_algorithm = cipher
@@ -500,7 +502,7 @@ def main() -> None:
             out_path = safe_output_path(args.output_dir, args.name_format.format(filename=name))
             db_decrypt(db_path, out_path, key, hmac_algorithm, verbose=args.verbose)
         except (ValueError, RuntimeError, OSError) as exc:
-            log(f"错误: {name}: {exc}")
+            log(f"{PROG}: {name}: {exc}")
             failed += 1
 
     if failed:

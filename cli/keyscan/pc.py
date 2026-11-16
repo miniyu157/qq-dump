@@ -116,7 +116,7 @@ def _prepare(account, who: str, *, verbose: bool) -> _Pending | dict[str, object
         settings_bytes = (db_dir / "settings.db").read_bytes()
     except OSError:
         if verbose:
-            _log(f"get_keys: 账号 {who} 缺少 settings.db, 无法验证, 未取得密钥")
+            _log(f"get_keys.py: 账号 {who} 缺少 settings.db, 无法验证, 未取得密钥")
         return _nt_key_entry(None, None, files, {"reason": "no settings.db"})
     return _Pending(account, who, settings_bytes, files)
 
@@ -129,10 +129,10 @@ def _match_cached(pending: list[_Pending], cached: dict[str, list[bytes]]) -> No
             continue
         if account.try_match(None, candidates):
             _, algo, _ = account.matched
-            _log(f"get_keys: 账号 {account.who} 采用密钥缓存中的 raw_key (page={algo.page} kdf={algo.kdf})")
+            _log(f"get_keys.py: 账号 {account.who} 采用密钥缓存中的 raw_key (page={algo.page} kdf={algo.kdf})")
         else:
             account.mismatched = True
-            _log(f"get_keys: 密钥缓存中账号 {account.who} 的 {len(candidates)} 个密钥均不匹配这份数据; raw_key 随设备而不同, 须在这份数据所在的设备上取得")
+            _log(f"get_keys.py: 密钥缓存中账号 {account.who} 的 {len(candidates)} 个密钥均不匹配这份数据; raw_key 随设备而不同, 须在这份数据所在的设备上取得")
 
 
 def _scan_until_matched(backend, pending: list[_Pending], *, verbose: bool) -> int:
@@ -144,7 +144,7 @@ def _scan_until_matched(backend, pending: list[_Pending], *, verbose: bool) -> i
     denied = 0
     remaining = list(pending)
     if verbose and not pids:
-        _log("get_keys: 未发现 QQ 进程; 请先登录 QQ")
+        _log("get_keys.py: 未发现 QQ 进程; 请先登录 QQ")
     for pid, name in pids:
         if not remaining:
             break
@@ -161,12 +161,12 @@ def _scan_until_matched(backend, pending: list[_Pending], *, verbose: bool) -> i
             denied += 1
             continue
         if verbose and candidates:
-            _log(f"get_keys: pid {pid} [{name}] 收集到 {len(candidates)} 个候选")
+            _log(f"get_keys.py: pid {pid} [{name}] 收集到 {len(candidates)} 个候选")
         hit = [account for account in remaining if account.try_match(pid, candidates)]
         # 取得密钥是选账号的关键信息, 默认即提示, 避免用户选到无密钥的账号
         for account in hit:
             _, algo, _ = account.matched
-            _log(f"get_keys: 账号 {account.who} 在 pid {pid} 取得 raw_key (page={algo.page} kdf={algo.kdf})")
+            _log(f"get_keys.py: 账号 {account.who} 在 pid {pid} 取得 raw_key (page={algo.page} kdf={algo.kdf})")
         remaining = [account for account in remaining if account.matched is None]
     return denied
 
@@ -182,16 +182,16 @@ def _pending_entry(pending: _Pending, denied: int, *, scanned: bool, verbose: bo
     if not scanned:
         if pending.mismatched:
             return _nt_key_entry(None, None, pending.files, {"reason": "key mismatch"})
-        _log(f"get_keys: 账号 {who} 未取得 raw_key; 本机不是这份数据所属的系统, 无法扫描 QQ 进程内存, 请用 -k 指定在数据所在的设备上取得的密钥缓存")
+        _log(f"get_keys.py: 账号 {who} 未取得 raw_key; 本机不是这份数据所属的系统, 无法扫描 QQ 进程内存, 请用 -k 指定在数据所在的设备上取得的密钥缓存")
         return _nt_key_entry(None, None, pending.files, {"reason": "no key"})
     # 只有确有进程拒绝打开时才归因权限; 是否提权不作判定依据 (Windows 非管理员常可直接读取),
     # Linux 读他人进程通常须 root, 打不开的进程会计入 denied, 由此报出权限不足
     if denied:
         if verbose:
-            _log(f"get_keys: 账号 {who} 未取得 raw_key; {denied} 个 QQ 进程无权读取, Linux 下请以 root 身份重试")
+            _log(f"get_keys.py: 账号 {who} 未取得 raw_key; {denied} 个 QQ 进程无权读取, Linux 下请以 root 身份重试")
         return _nt_key_entry(None, None, pending.files, {"reason": "permission denied"})
     # 未找到同样关系到能否选用该账号, 默认即提示
-    _log(f"get_keys: 账号 {who} 未在任何 QQ 进程中找到通过验证的 raw_key (可能未登录)")
+    _log(f"get_keys.py: 账号 {who} 未在任何 QQ 进程中找到通过验证的 raw_key (可能未登录)")
     return _nt_key_entry(None, None, pending.files, {"reason": "not found"})
 
 

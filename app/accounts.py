@@ -12,7 +12,7 @@ from pathlib import Path
 
 from app.ansi import err
 from app.dependencies import OPENSSL, SQLCIPHER
-from app.errors import AppError
+from app.errors import AppError, ScriptFailed
 from app.key_cache import DEFAULT_KEY_CACHE, remember_keys
 from app.scripts import get_keys, locate_data
 from app.utils import cancel_log, info_log, prefer_binaries, require_binaries, warn_log
@@ -34,7 +34,8 @@ def locate_data_root(root_dir: str | None) -> tuple[str, str]:
     try:
         locations = locate_data(root_dir)
     except AppError as exc:
-        warn_log(str(exc))
+        if not isinstance(exc, ScriptFailed):
+            warn_log(str(exc))
         info_log(_CHANGE_HINT)
         sys.exit(1)
     if not locations:

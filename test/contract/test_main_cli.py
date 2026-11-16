@@ -127,6 +127,12 @@ class KeyTests(_MainCase):
         self.assertEqual(located.code, 0, located.err)
         self.assertEqual({record["platform"] for record in located.json()}, {"android"})
 
+    def test_missing_root_is_reported_once_by_the_script(self) -> None:
+        result = self.main("-r", self.work / "absent-root", "key")
+        self.assertEqual((result.code, result.out), (1, ""))
+        self.assertIn("get_keys.py: 数据根目录不存在", result.err)
+        self.assertNotIn("get_keys.py 失败", result.err)
+
     def test_no_account_matches_the_filter(self) -> None:
         result = self.main("-r", self.android, "-a", "99999", "key")
         self.assertEqual((result.code, result.out), (1, ""))
@@ -171,6 +177,7 @@ class PcKeyCacheTests(_MainCase):
         result = self.main("-r", self._root(), "key")
         self.assertEqual((result.code, result.out), (1, ""))
         self.assertIn("keys.json", result.err)
+        self.assertNotIn("get_keys.py 失败", result.err)
         self.assertEqual(self.cache.read_text(encoding="utf-8"), "# 来源: windows\n10001 first!KEY@0000#1\n")
 
 

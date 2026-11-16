@@ -237,7 +237,7 @@ def read_accounts(path: Path, *, verbose: bool = False) -> list[Account]:
     if algo is None:
         raise OSError(f"无法解密 login.db: 内置密钥对各种算法组合均不匹配 ({path})")
     if verbose:
-        _log(f"get_keys: login.db 算法 page={algo.page} kdf={algo.kdf}")
+        _log(f"get_keys.py: login.db 算法 page={algo.page} kdf={algo.kdf}")
 
     salt = db_bytes[_HEADER_SIZE:_HEADER_SIZE + _SALT_SIZE]
     key = _derive_key(_PRE_LOGIN_KEY, salt, algo)
@@ -247,7 +247,7 @@ def read_accounts(path: Path, *, verbose: bool = False) -> list[Account]:
     if wal_path.is_file():
         merged = _merge_wal(image, wal_path.read_bytes(), key, algo)
         if verbose and merged:
-            _log(f"get_keys: login.db 合并 -wal 的 {merged} 帧")
+            _log(f"get_keys.py: login.db 合并 -wal 的 {merged} 帧")
 
     try:
         return _query_login_table(bytes(image))

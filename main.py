@@ -7,7 +7,7 @@ from pathlib import Path
 
 from api.errors import DatabaseError
 from app.ansi import err, out
-from app.errors import AppError
+from app.errors import AppError, ScriptFailed
 from app.utils import cancel_log, require_binaries, require_modules, warn_log
 from app.version import version
 
@@ -395,6 +395,8 @@ def main() -> None:
 
     try:
         args.func(args)
+    except ScriptFailed:
+        sys.exit(1)
     except (AppError, DatabaseError, OSError) as exc:
         print(exc, file=sys.stderr)
         sys.exit(1)

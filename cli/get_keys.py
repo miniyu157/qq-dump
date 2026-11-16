@@ -214,7 +214,7 @@ def locate_candidates(root_dir: str | None, *, verbose: bool = False) -> list[tu
             if root_dir is not None:
                 raise
             if verbose:
-                print(f"get_keys: 跳过默认位置 {root}，其下没有可识别的 QQ 数据布局", file=sys.stderr)
+                log(f"{PROG}: 跳过默认位置 {root}，其下没有可识别的 QQ 数据布局")
     return candidates
 
 
@@ -260,7 +260,7 @@ def _windows_accounts(root: Path, *, verbose: bool) -> list:
         uid_by_uin = {entry.uin: entry.uid for entry in login_db.read_accounts(locate.windows_login_db(root), verbose=verbose)}
     except OSError as exc:
         if verbose:
-            print(f"get_keys: 读取 login.db 补全 uid 失败 (不影响取密钥): {exc}", file=sys.stderr)
+            log(f"{PROG}: 读取 login.db 补全 uid 失败 (不影响取密钥): {exc}")
         uid_by_uin = {}
     return [account._replace(uid=uid_by_uin.get(account.uin, account.uid)) for account in accounts]
 

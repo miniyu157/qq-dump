@@ -116,7 +116,7 @@ def _linux_data_roots(*, verbose: bool = False) -> list[Path]:
         roots = [home / relative for relative in _LINUX_ROOTS if _has_login_db(home / relative)]
         if roots:
             if verbose and home != Path.home():
-                print(f"get_keys: 当前 HOME 下没有 QQ 数据 (可能是 sudo 运行), 改用 {home}", file=sys.stderr)
+                print(f"get_keys.py: 当前 HOME 下没有 QQ 数据 (可能是 sudo 运行), 改用 {home}", file=sys.stderr)
             return roots
     return []
 
