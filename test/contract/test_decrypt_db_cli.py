@@ -75,8 +75,8 @@ class _DecryptCase(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.out = Path(temporary.name) / "out"
 
-    def decrypt(self, *args: str | Path, source: Path | None = None, env: dict[str, str] | None = None) -> Result:
-        return run_script("decrypt_db.py", "-d", str(source or self.source), "-o", str(self.out), *map(str, args), env=env)
+    def decrypt(self, *args: str | Path, source: Path | None = None, env: dict[str, str] | None = None, stdin: str | None = None) -> Result:
+        return run_script("decrypt_db.py", "-d", str(source or self.source), "-o", str(self.out), *map(str, args), env=env, stdin=stdin)
 
     def outputs(self) -> list[str]:
         """输出目录下的全部文件，含隐藏的临时文件；目录不存在时为空。"""
@@ -117,6 +117,16 @@ class DecryptTests(_DecryptCase):
         result = self.decrypt("-k", _NT_KEY, "-k", f"gpro_v1-6_*.db={_GPRO_KEY}:HMAC_SHA512", "gpro_v1-6_u_x.db", "nt_msg.db")
         self.assertEqual(result.code, 1)
         self.assertEqual(self.outputs(), ["nt_msg.db"])
+
+    def test_rules_from_a_file_or_stdin_behave_like_repeated_k(self) -> None:
+        rules = f"gpro_v1-6_*.db={_GPRO_KEY}:HMAC_SHA512\n\n*={_RAW_KEY}\n"
+        rule_file = self.out.parent / "rules.txt"
+        rule_file.write_text(rules, encoding="utf-8")
+        for source, stdin in ((str(rule_file), None), ("-", rules)):
+            with self.subTest(source=source):
+                result = self.decrypt("-K", source, "gpro_v1-6_u_x.db", "raw.db", stdin=stdin)
+                self.assertEqual(result.code, 0, result.err)
+                self.assertEqual((_rows(self.out / "gpro_v1-6_u_x.db"), _rows(self.out / "raw.db")), (_ROWS, _ROWS))
 
     def test_all_databases_of_the_directory_are_taken_by_default(self) -> None:
         source = self.base / "only-good"
@@ -248,7 +258,18 @@ class ArgumentTests(_DecryptCase):
         self.assertNotIn("\x1b[", result.out)
 
     def test_invalid_arguments_exit_with_2(self) -> None:
-        invalid = [("-k", f"{_NT_KEY}:HMAC_MD5"), ("--no-such-option",), ("-f", "{uin}/{filename}"), ("-f", "{filename"), ("-f", "{0}")]
+        bad_rules = self.base / "bad-rules.txt"
+        bad_rules.write_text(f"{_NT_KEY}\n{_NT_KEY}:HMAC_MD5\n", encoding="utf-8")
+        invalid = [
+            ("-k", f"{_NT_KEY}:HMAC_MD5"),
+            ("--no-such-option",),
+            ("-f", "{uin}/{filename}"),
+            ("-f", "{filename"),
+            ("-f", "{0}"),
+            ("-k", _NT_KEY, "-K", str(bad_rules)),
+            ("-K", str(bad_rules)),
+            ("-K", str(self.base / "absent-rules.txt")),
+        ]
         for args in ((), *(("-d", str(self.source), *case) for case in invalid)):
             with self.subTest(args=args):
                 result = run_script("decrypt_db.py", *args)

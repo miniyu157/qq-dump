@@ -179,6 +179,15 @@ class SudoTests(_ScriptsCase):
         scripts.locate_data(str(self.android))
         self.assertFalse(self.log.exists())
 
+    def test_keys_stay_off_the_command_line(self) -> None:
+        (record,) = self.get_keys(self.android, qq="10003")
+        with captured_stderr():
+            scripts.decrypt(record, str(self.out), "{filename}", ["absent.db"], copy_plain=False, as_root=True)
+        argv = self.log.read_text(encoding="utf-8")
+        self.assertEqual(Path(argv.splitlines()[1]).name, "decrypt_db.py")
+        for entry in record["keys"]:
+            self.assertNotIn(entry["key"], argv)
+
     def test_notice_names_the_script_but_not_the_keys(self) -> None:
         (record,) = self.get_keys(self.android, qq="10003")
         scripts.set_sudo_notice(True)

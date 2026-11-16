@@ -81,6 +81,23 @@ def key_rule(text: str) -> tuple[str, str, str]:
     return pattern or "*", key, hmac_algorithm
 
 
+def read_key_file(path: str) -> list[tuple[str, str, str]]:
+    """读取 -K 的密钥规则，每行一条，语法同 -k，跳过空行；path 为 - 时读 stdin。
+
+    文件无法读取时抛 OSError，某行无效时抛 argparse.ArgumentTypeError。
+    """
+    text = sys.stdin.read() if path == "-" else Path(path).expanduser().read_text(encoding="utf-8")
+    rules = []
+    for number, line in enumerate(text.splitlines(), 1):
+        if not line:
+            continue
+        try:
+            rules.append(key_rule(line))
+        except argparse.ArgumentTypeError as exc:
+            raise argparse.ArgumentTypeError(f"第 {number} 行: {exc}") from None
+    return rules
+
+
 def db_cipher(filename: str, rules: list[tuple[str, str, str]]) -> tuple[str, str] | None:
     """按顺序取首条文件名模式匹配的规则，返回其密钥与 HMAC 算法；无匹配或该规则的密钥为空时返回 None"""
     for pattern, key, hmac_algorithm in rules:
@@ -361,6 +378,7 @@ def help_text() -> str:
 \033[1;4m选项:\033[0m
   \033[1m-d, --db-dir <目录>\033[0m               数据库目录
   \033[1m-k, --key <[模式=]密钥[:算法]>\033[0m    密钥规则，可重复
+  \033[1m-K, --key-file <文件>\033[0m             从文件读取密钥规则，每行一条，- 为 stdin
   \033[1m-o, --output-dir <目录=.>\033[0m         输出目录 \033[2m(默认: 当前目录)\033[0m
   \033[1m-f, --name-format <模版>\033[0m          输出文件名模版，斜杠表示目录层
                                     仅可用 {{filename}} \033[2m(默认: {{filename}})\033[0m
@@ -376,6 +394,8 @@ def help_text() -> str:
   密钥可含 : 与 =，含 = 时须写明模式 (如 '*=密钥')；
   留空表示匹配的文件没有可用密钥。
   算法为 HMAC_SHA1 或 HMAC_SHA512，省略时为 HMAC_SHA1；校验失败时改试另一种。
+  命令行参数对本机其他用户可见，可改用 -K 从文件或 stdin 传入规则，空行跳过；
+  -K 与 -k 不能同时使用。
 
 \033[1;4m明文库:\033[0m
   未加密的 SQLite 文件不需要密钥，带有 1024 字节 QQ 文件头的也按明文库处理。
@@ -385,7 +405,7 @@ def help_text() -> str:
 \033[1;4m退出码:\033[0m
   \033[1m0\033[0m  全部文件已导出，或按 --skip-empty、明文库规则跳过
   \033[1m1\033[0m  至少一个文件失败，数据库目录不存在，或未找到 sqlcipher
-  \033[1m2\033[0m  参数错误，含 --name-format 模版无效
+  \033[1m2\033[0m  参数错误，含 --name-format 模版无效、-K 的文件无法读取或含无效规则
   失败的文件不写入输出目录，已存在的同名输出保持不变。
 
 \033[1;4m示例:\033[0m
@@ -418,7 +438,9 @@ class HelpParser(argparse.ArgumentParser):
 def main() -> None:
     parser = HelpParser()
     parser.add_argument("-d", "--db-dir", required=True)
-    parser.add_argument("-k", "--key", action="append", type=key_rule, default=[])
+    keys = parser.add_mutually_exclusive_group()
+    keys.add_argument("-k", "--key", action="append", type=key_rule, default=[])
+    keys.add_argument("-K", "--key-file")
     parser.add_argument("files", nargs="*")
     parser.add_argument("-o", "--output-dir", default=".")
     parser.add_argument("-f", "--name-format", default="{filename}")
@@ -430,6 +452,11 @@ def main() -> None:
         args.name_format.format(filename="")
     except (KeyError, IndexError, AttributeError, ValueError):
         parser.error(f"--name-format 模版无效: {args.name_format} (只能使用 {{filename}}，字面的花括号写作 {{{{ 与 }}}})")
+    if args.key_file is not None:
+        try:
+            args.key = read_key_file(args.key_file)
+        except (OSError, argparse.ArgumentTypeError) as exc:
+            parser.error(f"--key-file {args.key_file}: {exc}")
 
     if shutil.which("sqlcipher") is None:
         log("错误: 未找到 sqlcipher，无法解密数据库")

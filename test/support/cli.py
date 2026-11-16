@@ -49,9 +49,9 @@ def run(argv: list[str], *, env: dict[str, str] | None = None, cwd: str | None =
     return Result(done.returncode, done.stdout, done.stderr)
 
 
-def run_script(name: str, *args: str, env: dict[str, str] | None = None, cwd: str | None = None) -> Result:
+def run_script(name: str, *args: str, env: dict[str, str] | None = None, cwd: str | None = None, stdin: str | None = None) -> Result:
     """运行 cli/ 下的脚本，如 run_script("get_keys.py", "-r", root)。"""
-    return run([sys.executable, str(REPO / "cli" / name), *args], env=env, cwd=cwd)
+    return run([sys.executable, str(REPO / "cli" / name), *args], env=env, cwd=cwd, stdin=stdin)
 
 
 def run_main(*args: str, env: dict[str, str] | None = None, cwd: str | None = None, stdin: str | None = None) -> Result:

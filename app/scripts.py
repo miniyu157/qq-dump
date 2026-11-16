@@ -69,17 +69,17 @@ def decrypt(record: dict[str, object], output_dir: str, name_format: str, files:
 
     返回子进程是否以 0 退出；跳过空库与明文库不计失败，不保证每个文件均有输出。
     """
-    command = [*_script("decrypt_db.py"), "-d", record["db_dir"]]
-    for entry in record["keys"]:
-        # 未取得的密钥留空，匹配的文件报告缺少密钥，不再尝试后面的规则
-        command += ["-k", f"{entry['pattern']}={entry['key'] or ''}:{entry['hmac_algorithm']}"]
+    # 密钥规则经 stdin 传入，不出现在本机其他用户可见的命令行中。
+    # 未取得的密钥留空，匹配的文件报告缺少密钥，不再尝试后面的规则
+    rules = "".join(f"{entry['pattern']}={entry['key'] or ''}:{entry['hmac_algorithm']}\n" for entry in record["keys"])
+    command = [*_script("decrypt_db.py"), "-d", record["db_dir"], "-K", "-"]
     if skip_empty:
         command.append("--skip-empty")
     if copy_plain:
         command.append("--copy-plain")
     command += ["-o", output_dir, "-f", name_format, *files]
     label = f"正在解密账号 {record['user']}.{record['uin']} 的 {err.HL}{' '.join(files) or '全部数据库文件'}{err.RESET}"
-    return _run(command, as_root=as_root, label=label).returncode == 0
+    return _run(command, as_root=as_root, label=label, stdin=rules).returncode == 0
 
 
 def _script(name: str) -> list[str]:
@@ -99,19 +99,21 @@ def set_verbose(enabled: bool) -> None:
     _verbose = enabled
 
 
-def _run(command: list[str], *, as_root: bool, label: str | None = None, capture_stdout: bool = False) -> subprocess.CompletedProcess[str]:
-    """as_root 为真时检查 sudo 依赖并通过 sudo 执行；Windows 无 sudo，as_root 在此被忽略。"""
+def _run(command: list[str], *, as_root: bool, label: str | None = None, capture_stdout: bool = False, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+    """as_root 为真时检查 sudo 依赖并通过 sudo 执行；Windows 无 sudo，as_root 在此被忽略。
+
+    stdin 不为 None 时作为子进程的标准输入，否则子进程继承本进程的标准输入。
+    """
     as_root = as_root and sys.platform != "win32"
     if as_root:
         require_binaries("提升权限", [SUDO])
         if _sudo_notice:
-            # 只显示脚本名: 完整命令行含 -k 密钥
             danger_log(f"使用 sudo 运行: ({Path(command[1]).name})")
     if label is not None:
         print(label, file=sys.stderr)
     stdout = subprocess.PIPE if capture_stdout else None
     argv = ["sudo", *command] if as_root else command
-    return subprocess.run(argv, stdout=stdout, text=True, check=False)
+    return subprocess.run(argv, input=stdin, stdout=stdout, text=True, check=False)
 
 
 def _run_json(command: list[str], *, as_root: bool) -> Any:
