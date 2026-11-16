@@ -76,14 +76,16 @@ def _decrypt_to_temp(args: argparse.Namespace, names: list[str]) -> Path:
 
     record = _select_account(args, names, as_root=as_root)
 
-    if not decrypt(record, temp_dir.name, "{filename}", names, copy_plain=True, as_root=as_root):
-        warn_log(f"解密失败: {', '.join(names)}")
-        sys.exit(1)
+    succeeded = decrypt(record, temp_dir.name, "{filename}", names, copy_plain=True, as_root=as_root)
     directory = Path(temp_dir.name)
-    for name in names:
-        if not (directory / name).is_file():
-            warn_log(f"解密失败: {name}")
-            sys.exit(1)
+    # decrypt_db.py 解密成功后才写入输出文件，缺少的即是失败的
+    failed = [name for name in names if not (directory / name).is_file()]
+    if failed:
+        warn_log(f"解密失败: {', '.join(failed)}")
+        sys.exit(1)
+    if not succeeded:
+        warn_log("decrypt_db.py 以非 0 退出")
+        sys.exit(1)
     return directory
 
 
