@@ -113,9 +113,9 @@ class AndroidTests(_CliCase):
 
 
 class LocateTests(_CliCase):
-    """--locate 只报告判定的平台与数据根目录候选，不取密钥。"""
+    """--locate 只报告数据根目录候选及其平台，不取密钥。"""
 
-    def _locate(self, *args: str | Path) -> dict[str, object]:
+    def _locate(self, *args: str | Path) -> list[dict[str, object]]:
         result = self.get_keys("--locate", *args)
         self.assertEqual(result.code, 0, result.err)
         return result.json()
@@ -130,29 +130,16 @@ class LocateTests(_CliCase):
         for platform, marker in markers.items():
             with self.subTest(platform=platform):
                 root = self._root(f"locate-{platform}", marker)
-                self.assertEqual(self._locate("-r", root), {"platform": platform, "roots": [str(root)]})
+                self.assertEqual(self._locate("-r", root), [{"platform": platform, "root": str(root)}])
 
-    def test_unrecognized_root_falls_back_to_the_running_system(self) -> None:
-        # 帮助写明的规则: Windows 为 windows，存在 /data/user 为 android，其余为 linux
-        expected = "windows" if sys.platform == "win32" else "android" if Path("/data/user").is_dir() else "linux"
-        root = self._root("locate-empty", ".")
-        self.assertEqual(self._locate("-r", root), {"platform": expected, "roots": [str(root)]})
-
-    def test_explicit_platform_overrides_the_structure(self) -> None:
-        root = self._root("locate-explicit", "data/user")
-        self.assertEqual(self._locate("-P", "linux", "-r", root)["platform"], "linux")
-
-    def test_layout_of_another_system_has_no_default_root(self) -> None:
-        self.assertEqual(self._locate("-P", _FOREIGN), {"platform": _FOREIGN, "roots": []})
-
-    def test_android_defaults_to_the_filesystem_root(self) -> None:
-        self.assertEqual(self._locate("-P", "android"), {"platform": "android", "roots": [str(Path("/"))]})
-
-    def test_taking_keys_without_a_root_is_an_error(self) -> None:
-        result = self.get_keys("-P", _FOREIGN)
-        self.assertNotEqual(result.code, 0)
-        self.assertEqual(result.out, "")
-        self.assertIn("-r", result.err)
+    def test_unrecognized_or_missing_root_is_an_error(self) -> None:
+        reasons = {"结构识别不出": (self._root("locate-empty", "."), "无法识别"), "不存在": (self.base / "locate-absent", "不存在")}
+        for situation, (root, reason) in reasons.items():
+            with self.subTest(situation=situation):
+                result = self.get_keys("--locate", "-r", root)
+                self.assertNotEqual(result.code, 0)
+                self.assertEqual(result.out, "")
+                self.assertIn(reason, result.err)
 
 
 class PcTests(_CliCase):
@@ -232,13 +219,13 @@ class PcTests(_CliCase):
     def test_windows_accounts_are_listed_even_without_login_db(self) -> None:
         root = self.base / "windows-no-login"
         roots.windows_account(root, "10001", None)
-        (record,) = self.records("-P", "windows", "-r", root)
+        (record,) = self.records("-r", root)
         self.assertEqual((record["uin"], record["uid"]), ("10001", ""))
 
     def test_linux_accounts_cannot_be_listed_without_login_db(self) -> None:
         root = self.base / "linux-no-login"
         (root / roots.account_dir_name(_UID_A) / "nt_db").mkdir(parents=True)
-        result = self.get_keys("-P", "linux", "-r", root)
+        result = self.get_keys("-r", root)
         self.assertNotEqual(result.code, 0)
         self.assertEqual(result.out, "")
         self.assertIn("login.db", result.err)
@@ -246,7 +233,7 @@ class PcTests(_CliCase):
     def test_root_holding_no_account_is_an_error(self) -> None:
         root = self.base / "windows-empty"
         root.mkdir()
-        result = self.get_keys("-P", "windows", "-r", root)
+        result = self.get_keys("-r", root)
         self.assertNotEqual(result.code, 0)
         self.assertEqual(result.out, "")
 
@@ -279,7 +266,7 @@ class ArgumentTests(_CliCase):
                 self.assertNotIn("\x1b[", result.out, "输出不是终端时不带样式")
 
     def test_invalid_arguments_exit_with_2(self) -> None:
-        for args in (("--no-such-option",), ("-P", "macos"), ("-r",)):
+        for args in (("--no-such-option",), ("-P", "linux"), ("-r",)):
             with self.subTest(args=args):
                 result = self.get_keys(*args)
                 self.assertEqual((result.code, result.out), (2, ""))
@@ -290,7 +277,7 @@ class BuilderCrossCheckTests(_CliCase):
         # 反向检验构造器: 它写出的 login.db 由脚本读出同样的 uin 与 uid
         root = self.base / "cross-check"
         roots.linux_accounts(root, [("10001", _UID_A, "甲", None)], nested=True)
-        (record,) = self.records("-P", "linux", "-r", root)
+        (record,) = self.records("-r", root)
         self.assertEqual((record["uin"], record["uid"]), ("10001", _UID_A))
         self.assertEqual(qqnt.PRE_LOGIN_KEY, b"BD156D6710D54D8782F4")
 

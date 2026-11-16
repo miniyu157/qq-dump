@@ -70,7 +70,7 @@ class InformationTests(_MainCase):
             self.assertEqual((result.code, result.err), (0, ""))
             self.assertNotIn("\x1b[", result.out, "输出不是终端时不带样式")
         self.assertEqual(len({result.out for result in outputs}), 1)
-        for name in ("key", "db", "web", "friends", "owner", "--key-cache", "QQDUMP_KEY_CACHE", "--platform", "-E, --ignore-env"):
+        for name in ("key", "db", "web", "friends", "owner", "--key-cache", "QQDUMP_KEY_CACHE", "--root-dir", "-E, --ignore-env"):
             self.assertIn(name, outputs[0].out)
 
     def test_version_is_the_git_description(self) -> None:
@@ -121,15 +121,11 @@ class KeyTests(_MainCase):
         self.assertEqual(self.main("-r", self.android, "key").code, 0)
         self.assertFalse(self.cache.exists())
 
-    def test_platform_and_root_can_come_from_the_environment(self) -> None:
-        # 不带 -E 运行: 环境变量给出的平台把 Android 目录当作 linux 布局，因缺少 login.db 而失败；带 -E 时按目录结构识别
-        env = child_env(QQDUMP_PLATFORM="linux", QQDUMP_ROOT_DIR=str(self.android), QQDUMP_KEY_CACHE=str(self.cache))
-        without = run([sys.executable, str(REPO / "main.py"), "key"], env=env)
-        self.assertEqual((without.code, without.out), (1, ""))
-        self.assertIn("login.db", without.err)
-        with_ignore = run([sys.executable, str(REPO / "main.py"), "-E", "-r", str(self.android), "key"], env=env)
-        self.assertEqual(with_ignore.code, 0, with_ignore.err)
-        self.assertEqual({record["platform"] for record in with_ignore.json()}, {"android"})
+    def test_root_can_come_from_the_environment(self) -> None:
+        env = child_env(QQDUMP_ROOT_DIR=str(self.android), QQDUMP_KEY_CACHE=str(self.cache))
+        located = run([sys.executable, str(REPO / "main.py"), "-u", "10", "key"], env=env)
+        self.assertEqual(located.code, 0, located.err)
+        self.assertEqual({record["platform"] for record in located.json()}, {"android"})
 
     def test_no_account_matches_the_filter(self) -> None:
         result = self.main("-r", self.android, "-a", "99999", "key")
@@ -224,7 +220,7 @@ class DbTests(_MainCase):
 
 class ArgumentTests(_MainCase):
     def test_invalid_arguments_exit_with_2(self) -> None:
-        for args in (("no-such-command",), ("-P", "macos", "key"), ("key", "--export")):
+        for args in (("no-such-command",), ("-P", "linux", "key"), ("key", "--export")):
             with self.subTest(args=args):
                 result = run_main(*args)
                 self.assertEqual((result.code, result.out), (2, ""))

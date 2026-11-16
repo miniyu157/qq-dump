@@ -39,21 +39,12 @@ class DefaultTests(_ConfigCase):
     def test_nothing_given_anywhere(self) -> None:
         args = self._resolve()
         self.assertEqual(
-            {name: getattr(args, name) for name in ("platform", "user", "qq", "output_dir", "db_dir", "root_dir", "key_cache", "profile_db", "nt_msg_db", "sudo_notice", "verbose")},
-            {"platform": "auto", "user": None, "qq": None, "output_dir": ".", "db_dir": None, "root_dir": None, "key_cache": None, "profile_db": None, "nt_msg_db": None, "sudo_notice": False, "verbose": False},
+            {name: getattr(args, name) for name in ("user", "qq", "output_dir", "db_dir", "root_dir", "key_cache", "profile_db", "nt_msg_db", "sudo_notice", "verbose")},
+            {"user": None, "qq": None, "output_dir": ".", "db_dir": None, "root_dir": None, "key_cache": None, "profile_db": None, "nt_msg_db": None, "sudo_notice": False, "verbose": False},
         )
 
 
 class PrecedenceTests(_ConfigCase):
-    def test_platform(self) -> None:
-        self._dotenv("QQDUMP_PLATFORM=windows\n")
-        self.assertEqual(self._resolve().platform, "windows")
-        os.environ["QQDUMP_PLATFORM"] = "android"
-        self.assertEqual(self._resolve().platform, "android")
-        self.assertEqual(self._resolve(platform="linux").platform, "linux")
-        # 命令行显式给出 auto 也算给出
-        self.assertEqual(self._resolve(platform="auto").platform, "auto")
-
     def test_path_options(self) -> None:
         variables = {"root_dir": "QQDUMP_ROOT_DIR", "key_cache": "QQDUMP_KEY_CACHE", "profile_db": "QQDUMP_PROFILE_DB", "nt_msg_db": "QQDUMP_NT_MSG_DB"}
         # 绝对路径的写法随系统而不同，取临时目录下的路径
@@ -79,16 +70,16 @@ class PrecedenceTests(_ConfigCase):
 
     def test_ignore_env_skips_environment_and_dotenv(self) -> None:
         self._dotenv("QQDUMP_ROOT_DIR=/from/dotenv\nQQDUMP_VERBOSE=1\n")
-        os.environ.update({"QQDUMP_PLATFORM": "android", "QQDUMP_KEY_CACHE": "/from/environment"})
+        os.environ.update({"QQDUMP_KEY_CACHE": "/from/environment"})
         args = self._resolve(ignore_env=True)
-        self.assertEqual((args.platform, args.root_dir, args.key_cache, args.verbose), ("auto", None, None, False))
-        self.assertEqual(self._resolve(ignore_env=True, platform="linux", root_dir="/from/command-line").root_dir, "/from/command-line")
+        self.assertEqual((args.root_dir, args.key_cache, args.verbose), (None, None, False))
+        self.assertEqual(self._resolve(ignore_env=True, root_dir="/from/command-line").root_dir, "/from/command-line")
 
 
 class DotenvFileTests(_ConfigCase):
     def test_comments_blank_lines_and_lines_without_equals_are_ignored(self) -> None:
-        self._dotenv("# 注释\n\nQQDUMP_PLATFORM=linux\nnot a setting\n  # QQDUMP_VERBOSE=1\n")
-        self.assertEqual(text_setting("QQDUMP_PLATFORM"), "linux")
+        self._dotenv("# 注释\n\nSAMPLE=linux\nnot a setting\n  # QQDUMP_VERBOSE=1\n")
+        self.assertEqual(text_setting("SAMPLE"), "linux")
         self.assertIs(flag_setting("QQDUMP_VERBOSE"), False)
 
     def test_surrounding_quotes_and_spaces_are_removed(self) -> None:
@@ -114,9 +105,9 @@ class DotenvFileTests(_ConfigCase):
         self.assertIs(flag_setting("ABSENT"), False)
 
     def test_reading_settings_does_not_change_the_process_environment(self) -> None:
-        self._dotenv("QQDUMP_PLATFORM=linux\n")
-        text_setting("QQDUMP_PLATFORM")
-        self.assertNotIn("QQDUMP_PLATFORM", os.environ)
+        self._dotenv("SAMPLE=linux\n")
+        text_setting("SAMPLE")
+        self.assertNotIn("SAMPLE", os.environ)
 
 
 if __name__ == "__main__":

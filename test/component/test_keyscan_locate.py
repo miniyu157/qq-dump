@@ -5,7 +5,6 @@
 """
 
 import os
-import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -109,7 +108,9 @@ class LinuxDefaultRootTests(unittest.TestCase):
         # 当前 HOME 模拟 sudo 下的 /root，其下默认没有 QQ 数据
         self.current_home = base / "root"
         self.current_home.mkdir()
-        for replacement in (patch.object(locate, "Path", _Redirected(self.current_home, {"/home": self.homes})), patch.object(locate.sys, "platform", "linux")):
+        self.filesystem = base / "filesystem"
+        self.filesystem.mkdir()
+        for replacement in (patch.object(locate, "Path", _Redirected(self.current_home, {"/home": self.homes, "/": self.filesystem, _QQ_CONFIG: base / "absent.ini"})), patch.object(locate.sys, "platform", "linux")):
             replacement.start()
             self.addCleanup(replacement.stop)
 
@@ -125,7 +126,7 @@ class LinuxDefaultRootTests(unittest.TestCase):
         if sudo_user is not None:
             env["SUDO_USER"] = sudo_user
         with patch.dict(os.environ, env, clear=True):
-            return locate.default_data_roots("linux")
+            return locate.default_data_roots()
 
     def test_data_under_the_current_home_is_used(self) -> None:
         expected = self._qq(self.current_home)
@@ -175,7 +176,7 @@ class WindowsDefaultRootTests(unittest.TestCase):
     def _roots(self, content: str | None) -> list[Path]:
         if content is not None:
             self.config.write_text(content, encoding="utf-8")
-        return locate.default_data_roots("windows")
+        return locate.default_data_roots()
 
     def test_save_path_gets_tencent_files_appended(self) -> None:
         self.assertEqual(self._roots("[UserDataSet]\nUserDataSavePath=D:\\QQData\n"), [Path(r"D:\QQData\Tencent Files")])
@@ -190,10 +191,25 @@ class WindowsDefaultRootTests(unittest.TestCase):
                 self.assertEqual(self._roots(content), [])
 
 
-class ForeignLayoutTests(unittest.TestCase):
-    def test_another_systems_layout_has_no_default_root_here(self) -> None:
-        foreign = "linux" if sys.platform == "win32" else "windows"
-        self.assertEqual(locate.default_data_roots(foreign), [])
+class AllDefaultRootTests(unittest.TestCase):
+    """默认位置不分运行系统: 各平台的位置都查，有数据的列出。"""
+
+    def setUp(self) -> None:
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        base = Path(temporary.name)
+        self.filesystem = base / "filesystem"
+        self.filesystem.mkdir()
+        self.home = base / "home"
+        self.home.mkdir()
+        replacement = patch.object(locate, "Path", _Redirected(self.home, {"/home": base / "absent", "/": self.filesystem, _QQ_CONFIG: base / "absent.ini"}))
+        replacement.start()
+        self.addCleanup(replacement.stop)
+
+    def test_android_root_is_listed_when_data_user_exists(self) -> None:
+        self.assertEqual(locate.default_data_roots(), [])
+        (self.filesystem / "data" / "user").mkdir(parents=True)
+        self.assertEqual(locate.default_data_roots(), [self.filesystem])
 
 
 if __name__ == "__main__":

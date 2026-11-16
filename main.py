@@ -22,7 +22,7 @@ def cmd_key(args: argparse.Namespace) -> None:
     from app.accounts import locate_data_root, prepare_access, read_keys, valid_keys
     from app.output import render_json
 
-    args.platform, args.root_dir = locate_data_root(args.platform, args.root_dir)
+    args.platform, args.root_dir = locate_data_root(args.root_dir)
     as_root = prepare_access(args.root_dir, args.user, platform=args.platform, decrypting=False)
     render_json(valid_keys(read_keys(args.user, args.qq, args.root_dir, platform=args.platform, key_cache=args.key_cache, as_root=as_root)))
 
@@ -32,7 +32,7 @@ def cmd_db(args: argparse.Namespace) -> None:
     from app.accounts import locate_data_root, prepare_access, read_keys, valid_keys
     from app.scripts import decrypt
 
-    args.platform, args.root_dir = locate_data_root(args.platform, args.root_dir)
+    args.platform, args.root_dir = locate_data_root(args.root_dir)
     as_root = prepare_access(args.root_dir, args.user, platform=args.platform, decrypting=True)
     records = valid_keys(read_keys(args.user, args.qq, args.root_dir, platform=args.platform, key_cache=args.key_cache, as_root=as_root))
 
@@ -233,8 +233,7 @@ def help_text() -> str:
   {out.BOLD}{prog}{out.RESET} [选项] [子命令=menu] [命令选项] [参数]
 
 {_title}选项 (数据来源):{out.RESET} {out.FAINT}从哪里取哪些账号的数据与密钥，下文记作 [来源]{out.RESET}
-  {out.BOLD}-P, --platform <平台>{out.RESET}                 数据所属的平台 {out.FAINT}(默认: auto){out.RESET}
-  {out.BOLD}-r, --root-dir <目录>{out.RESET}                 数据根目录 {out.FAINT}(默认: 平台的默认位置){out.RESET}
+  {out.BOLD}-r, --root-dir <目录>{out.RESET}                 数据根目录 {out.FAINT}(默认: 本机全部默认位置中实际有数据的目录){out.RESET}
   {out.BOLD}-k, --key-cache <文件>{out.RESET}                密钥缓存文件 {out.FAINT}(默认: 仓库下 .cache/keys.json){out.RESET}
   {out.BOLD}-u, --user <ID>{out.RESET}                       Android 用户 ID {out.FAINT}(仅 android){out.RESET}
   {out.BOLD}-a, --qq <uin/uid>{out.RESET}                    QQ uin 或 uid 文本
@@ -270,20 +269,20 @@ def help_text() -> str:
 
 {_title}平台:{out.RESET}
   {out.FAINT}数据来自哪个系统的 QQ，决定数据根目录下的结构与取密钥的方式，
-  与运行本程序的系统无关。{out.RESET}
-  {out.BOLD}android{out.RESET}   密钥由账号信息与数据库文件头算出，不需要 QQ 运行
-  {out.BOLD}windows{out.RESET}   密钥先取自密钥缓存; 没有时从已登录的 QQ 进程内存扫描，
-            扫描须在运行该 QQ 的系统上进行
-  {out.BOLD}linux{out.RESET}     同 windows; 扫描通常需 root，无权时询问是否用 sudo 重试
-  {out.BOLD}auto{out.RESET}      指定了 -r 时按其下的结构识别; 识别不出或未指定时看运行系统:
-            Windows 为 windows，存在 /data/user 为 android，其余为 linux
+  与运行本程序的系统无关，按数据根目录下的结构识别:{out.RESET}
+  {out.BOLD}android{out.RESET}   有 data/user; 密钥由账号信息与数据库文件头算出，不需要 QQ 运行
+  {out.BOLD}windows{out.RESET}   有 <uin>/nt_qq/nt_db; 密钥先取自密钥缓存，没有时从已登录的
+            QQ 进程内存扫描，扫描须在运行该 QQ 的系统上进行
+  {out.BOLD}linux{out.RESET}     有 nt_qq_<哈希>/nt_db; 取密钥同 windows，扫描通常需 root，
+            无权时询问是否用 sudo 重试
 
 {_title}数据根目录:{out.RESET}
-  {out.BOLD}android{out.RESET}   默认为 /，其下为 data/user/<ID>/com.tencent.mobileqq
-  {out.BOLD}windows{out.RESET}   默认为 QQ 配置所指的 Tencent Files，其下为 <uin>/nt_qq/nt_db
-  {out.BOLD}linux{out.RESET}     默认为 ~/.config/QQ 或 flatpak 的 ~/.var/app/com.qq.QQ/config/QQ，
+  {out.FAINT}未指定 -r 时依次查找本机全部默认位置，与运行本程序的系统无关:{out.RESET}
+  {out.BOLD}android{out.RESET}   / (其下有 data/user 时)，其下为 data/user/<ID>/com.tencent.mobileqq
+  {out.BOLD}windows{out.RESET}   QQ 配置所指的 Tencent Files，其下为 <uin>/nt_qq/nt_db
+  {out.BOLD}linux{out.RESET}     ~/.config/QQ 或 flatpak 的 ~/.var/app/com.qq.QQ/config/QQ，
             其下为 nt_qq_<哈希>/nt_db
-  {out.FAINT}默认位置只在对应的系统上提供; 找到多个时询问，找不到时须用 -r 指定。{out.RESET}
+  {out.FAINT}找到多个时询问，找不到时须用 -r 指定; 数据在其他位置时也用 -r 指定。{out.RESET}
 
 {_title}密钥缓存:{out.RESET}
   windows 与 linux 的密钥取得后自动存入密钥缓存; 之后处理同一份数据，
@@ -295,7 +294,6 @@ def help_text() -> str:
 {_title}环境变量:{out.RESET}
   {out.FAINT}命令行参数优先，其次为进程环境变量，再次为仓库根目录的 .env;
   .env 中的相对路径按仓库根目录解析，开关类变量取值 1/true/yes/on 为开启;{out.RESET}
-  {out.BOLD}QQDUMP_PLATFORM{out.RESET}                       同 -P, --platform
   {out.BOLD}QQDUMP_ROOT_DIR{out.RESET}                       同 -r, --root-dir
   {out.BOLD}QQDUMP_KEY_CACHE{out.RESET}                      同 -k, --key-cache
   {out.BOLD}QQDUMP_PROFILE_DB{out.RESET}                     同 -p, --profile-db
@@ -347,7 +345,6 @@ def main() -> None:
     # 公共选项可位于子命令前后；SUPPRESS 防止子解析器默认值覆盖此前已解析的取值
     common.add_argument("-u", "--user", default=argparse.SUPPRESS)
     common.add_argument("-a", "--qq", default=argparse.SUPPRESS)
-    common.add_argument("-P", "--platform", choices=("auto", "android", "windows", "linux"), default=argparse.SUPPRESS)
     common.add_argument("-r", "--root-dir", dest="root_dir", default=argparse.SUPPRESS)
     common.add_argument("-k", "--key-cache", dest="key_cache", default=argparse.SUPPRESS)
     common.add_argument("-p", "--profile-db", dest="profile_db", default=argparse.SUPPRESS)

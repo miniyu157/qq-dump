@@ -20,10 +20,8 @@ _GIB = 1024**3
 
 
 def _system_platform() -> str:
-    """运行系统对应的平台，规则同帮助: Windows 为 windows，存在 /data/user 为 android，其余为 linux。"""
-    if sys.platform == "win32":
-        return "windows"
-    return "android" if Path("/data/user").is_dir() else "linux"
+    """运行系统上能扫描 QQ 进程的布局: Windows 为 windows，其余为 linux。"""
+    return "windows" if sys.platform == "win32" else "linux"
 
 
 def _check(path: Path, pragma: str) -> str:
@@ -40,11 +38,12 @@ class LiveTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.platform = _system_platform()
-        located = run_script("get_keys.py", "--locate", "-P", cls.platform)
-        if located.code != 0 or not located.json()["roots"]:
+        located = run_script("get_keys.py", "--locate")
+        candidates = [entry["root"] for entry in located.json() if entry["platform"] == cls.platform] if located.code == 0 else []
+        if not candidates:
             raise unittest.SkipTest(f"本机没有 {cls.platform} 平台的 QQ 数据根目录")
-        cls.root = located.json()["roots"][0]
-        result = run_script("get_keys.py", "-P", cls.platform, "-r", cls.root)
+        cls.root = candidates[0]
+        result = run_script("get_keys.py", "-r", cls.root)
         if result.code != 0:
             raise AssertionError(f"get_keys.py 失败 ({result.code}): {result.err}")
         cls.records = result.json()

@@ -1,6 +1,6 @@
 """账号与密钥的前置步骤，并封装取密钥时的密钥缓存与提权流程。
 
-调用顺序: locate_data_root 确定具体平台与数据根目录；prepare_access 做前置校验并给出 as_root；
+调用顺序: locate_data_root 确定数据根目录与其平台；prepare_access 做前置校验并给出 as_root；
 read_keys 在其上调用 get_keys，把密钥缓存交给它验证采用，扫描 QQ 进程内存因权限失败时交互提权重跑，
 新取得的密钥记入密钥缓存。
 key、db 与数据库补全共用这一顺序，任一步不通过时退出进程。
@@ -12,6 +12,7 @@ from pathlib import Path
 
 from app.ansi import err
 from app.dependencies import OPENSSL, SQLCIPHER
+from app.errors import AppError
 from app.key_cache import DEFAULT_KEY_CACHE, remember_keys
 from app.scripts import get_keys, locate_data
 from app.utils import cancel_log, info_log, prefer_binaries, require_binaries, warn_log
@@ -19,34 +20,46 @@ from lib.tui.choose import ChoiceCancelled, choose
 
 __all__ = ["locate_data_root", "prepare_access", "read_keys", "valid_keys"]
 
-_ADJUST_HINT = f"可以用 {err.HL}--root-dir{err.RESET}、环境变量或 .env 中的 {err.HL}QQDUMP_ROOT_DIR{err.RESET} 指定数据根目录，或用 {err.HL}--platform{err.RESET}、{err.HL}QQDUMP_PLATFORM{err.RESET} 更换平台"
+_ADJUST_HINT = f"可以用 {err.HL}--root-dir{err.RESET}、环境变量或 .env 中的 {err.HL}QQDUMP_ROOT_DIR{err.RESET} 指定数据根目录"
+_CHANGE_HINT = f"可以用 {err.HL}--root-dir{err.RESET} 或 {err.HL}QQDUMP_ROOT_DIR{err.RESET} 改用其他数据根目录；QQDUMP_ROOT_DIR 来自 .env 时可以用 {err.HL}-E{err.RESET} 忽略"
+_CHOOSE_HINT = f"可以用 {err.HL}--root-dir{err.RESET} 或 {err.HL}QQDUMP_ROOT_DIR{err.RESET} 直接指定其中之一"
 
 
-def locate_data_root(platform: str, root_dir: str | None) -> tuple[str, str]:
-    """确定具体平台与数据根目录，返回 (platform, root_dir)，供 prepare_access 与 read_keys 使用。
+def locate_data_root(root_dir: str | None) -> tuple[str, str]:
+    """确定数据根目录与其平台，返回 (platform, root_dir)，供 prepare_access 与 read_keys 使用。
 
-    platform 可为 auto；root_dir 为 None 时取该平台默认位置上的数据根目录，有多个时显示选择菜单。
-    没有候选、取消选择或输入无效时退出进程。会读取 stdin，向 stderr 输出提示。
+    root_dir 为 None 时取本机全部默认位置上有数据的目录，有多个时显示选择菜单。
+    没有候选、候选的结构识别不出、取消选择或输入无效时退出进程。会读取 stdin，向 stderr 输出提示。
     """
-    location = locate_data(platform, root_dir)
-    if not location.roots:
-        warn_log(f"当前按 {location.platform} 平台处理，但没有找到 QQ 数据根目录")
+    try:
+        locations = locate_data(root_dir)
+    except AppError as exc:
+        warn_log(str(exc))
+        info_log(_CHANGE_HINT)
+        sys.exit(1)
+    if not locations:
+        warn_log("没有找到 QQ 数据根目录")
         info_log(_ADJUST_HINT)
         sys.exit(1)
-    if len(location.roots) == 1:
-        return location.platform, location.roots[0]
+    if len(locations) == 1:
+        return locations[0]
 
     title = f"{err.BOLD}{err.INFO}找到多个 QQ 数据根目录，请选择:{err.RESET}"
+    labels = [f"{location.platform}  {location.root}" for location in locations]
     try:
-        choice = choose(location.roots, title=title)
-    except (ChoiceCancelled, EOFError):
+        choice = choose(labels, title=title)
+    except ChoiceCancelled:
         cancel_log("未选择数据根目录")
-        info_log(_ADJUST_HINT)
+        info_log(_CHOOSE_HINT)
+        sys.exit(1)
+    except EOFError:
+        warn_log("stdin 没有输入，无法选择数据根目录")
+        info_log(_CHOOSE_HINT)
         sys.exit(1)
     except ValueError as exc:
         warn_log(str(exc))
         sys.exit(1)
-    return location.platform, location.roots[choice]
+    return locations[choice]
 
 
 def prepare_access(root_dir: str, user: str | None, *, platform: str, decrypting: bool) -> bool:
@@ -77,7 +90,7 @@ def read_keys(user: str | None, qq: str | None, root_dir: str, *, platform: str,
     """
     # android 的密钥每次由数据库文件头算出，缓存对它没有用处
     if platform == "android":
-        return get_keys(user, qq, root_dir, platform=platform, key_cache=None, as_root=as_root)
+        return get_keys(user, qq, root_dir, key_cache=None, as_root=as_root)
 
     cache = Path(key_cache).expanduser() if key_cache is not None else DEFAULT_KEY_CACHE
     records = _scan_keys(user, qq, root_dir, platform=platform, key_cache=str(cache) if cache.is_file() else None, as_root=as_root)
@@ -87,12 +100,12 @@ def read_keys(user: str | None, qq: str | None, root_dir: str, *, platform: str,
 
 def _scan_keys(user: str | None, qq: str | None, root_dir: str, *, platform: str, key_cache: str | None, as_root: bool) -> list[dict[str, object]]:
     """调用 get_keys；Linux 下因无权读取 QQ 进程内存而未取得密钥时，询问并得到同意后以 sudo 重跑。"""
-    records = get_keys(user, qq, root_dir, platform=platform, key_cache=key_cache, as_root=as_root)
+    records = get_keys(user, qq, root_dir, key_cache=key_cache, as_root=as_root)
     if as_root or sys.platform == "win32" or not _scan_permission_denied(records):
         return records
     if not _confirm_sudo_rescan():
         return records
-    return get_keys(user, qq, root_dir, platform=platform, key_cache=key_cache, as_root=True)
+    return get_keys(user, qq, root_dir, key_cache=key_cache, as_root=True)
 
 
 def _remember(cache: Path, records: list[dict[str, object]]) -> None:
@@ -139,10 +152,9 @@ def valid_keys(records: list[dict[str, object]]) -> list[dict[str, object]]:
 def _require_qq_data(root_dir: str, user: str | None) -> None:
     """QQ 应用数据目录确定不存在时中止；无法读取时不拦截。"""
     users = Path(root_dir).expanduser() / "data" / "user"
-    target = users / (user or "*") / "com.tencent.mobileqq"
 
     if user is not None:
-        candidates = [target]
+        candidates = [users / user / "com.tencent.mobileqq"]
     else:
         try:
             candidates = [path / "com.tencent.mobileqq" for path in users.iterdir()]
@@ -160,10 +172,35 @@ def _require_qq_data(root_dir: str, user: str | None) -> None:
             continue
         except OSError:
             unknown = True
-    if not unknown:
-        warn_log(f"当前按 android 平台处理，但 QQ 私有目录不存在: {target}")
-        info_log(_ADJUST_HINT)
+    if unknown:
+        return
+
+    if user is None:
+        warn_log(f"{users} 下没有任何用户的 QQ 私有目录 (<用户>/com.tencent.mobileqq)")
+        info_log(_CHANGE_HINT)
         sys.exit(1)
+    warn_log(f"用户 {user} 下没有 QQ 私有目录: {candidates[0]}")
+    holders = _qq_users(users)
+    if holders:
+        info_log(f"有 QQ 私有目录的用户: {'、'.join(holders)}，可以用 {err.HL}-u{err.RESET} 改选")
+    elif holders == []:
+        info_log(_CHANGE_HINT)
+    sys.exit(1)
+
+
+def _qq_users(users: Path) -> list[str] | None:
+    """data/user 下有 QQ 私有目录的用户；有目录无法读取、结果不确定时返回 None。"""
+    names = []
+    try:
+        for path in users.iterdir():
+            try:
+                (path / "com.tencent.mobileqq").stat()
+            except (FileNotFoundError, NotADirectoryError):
+                continue
+            names.append(path.name)
+    except OSError:
+        return None
+    return sorted(names)
 
 
 def _qq_data_accessible(root_dir: str, user: str | None) -> bool:

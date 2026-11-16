@@ -285,11 +285,11 @@ Windows、Linux 首次取密钥时，需要打开 QQ 并登录要处理的账号
 
 ### 数据目录
 
-`--root-dir` (`-r`) 指定数据根目录，各平台的默认位置与目录格式如下。第三列为根目录下的相对路径。程序按目录结构识别平台，也可用 `--platform` (`-P`) 显式指定。
+`--root-dir` (`-r`) 指定数据根目录，用于数据不在默认位置的情况，例如从其他平台拷贝来的数据。未指定时依次查找本机全部默认位置，与运行本程序的系统无关，找到多个时询问。平台按目录结构识别。
 
 | 平台 | 默认数据根目录 | 根目录下的结构 |
 | --- | --- | --- |
-| `android` | `/` | `data/user/<Android 用户 ID>/com.tencent.mobileqq/` |
+| `android` | `/` (其下有 `data/user` 时) | `data/user/<Android 用户 ID>/com.tencent.mobileqq/` |
 | `windows` | QQ 配置指向的 *Tencent Files* | `<QQ 号>/nt_qq/nt_db/` |
 | `linux` | `~/.config/QQ`，flatpak 为 `~/.var/app/com.qq.QQ/config/QQ` | `nt_qq_<哈希>/nt_db/` |
 
@@ -303,7 +303,7 @@ Windows、Linux 首次取密钥时，需要打开 QQ 并登录要处理的账号
 
 | 工具 | 用途 |
 | --- | --- |
-| `cli/get_keys.py` | 定位账号、取得密钥; `--locate` 只输出平台与数据根目录候选 |
+| `cli/get_keys.py` | 定位账号、取得密钥; `--locate` 只输出数据根目录候选 |
 | `cli/decrypt_db.py` | 使用指定密钥解密数据库 |
 
 `test/make_root.py` 可生成 Android 布局的合成数据，需要 `sqlcipher`，输出到 `test/root/`，目录已存在时拒绝运行。样本包含正常与故障数据，用于手动测试。

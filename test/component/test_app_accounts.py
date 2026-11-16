@@ -17,6 +17,7 @@ from unittest.mock import patch
 from support.records import key_entry, record
 
 from app.accounts import locate_data_root, prepare_access, read_keys, valid_keys
+from app.errors import AppError
 from app.scripts import DataLocation
 from lib.tui.choose import ChoiceCancelled
 
@@ -37,13 +38,15 @@ class LocateDataRootTests(unittest.TestCase):
     """只有一个候选时直接采用，多个时询问，没有或取消时以状态码 1 退出。"""
 
     def _locate(self, roots: list[str], *, choice: object = None) -> tuple[str, str]:
+        locations = [DataLocation("linux", root) for root in roots]
         with (
-            patch("app.accounts.locate_data", return_value=DataLocation("linux", roots)),
+            patch("app.accounts.locate_data", return_value=locations),
             patch("app.accounts.choose", side_effect=[choice] if isinstance(choice, int) else choice) as chooser,
             redirect_stderr(io.StringIO()),
         ):
-            result = locate_data_root("auto", None)
+            result = locate_data_root(None)
         self.asked = chooser.called
+        self.labels = chooser.call_args.args[0] if chooser.called else None
         return result
 
     def test_single_root_is_used_without_asking(self) -> None:
@@ -53,10 +56,16 @@ class LocateDataRootTests(unittest.TestCase):
     def test_several_roots_are_offered_for_choice(self) -> None:
         self.assertEqual(self._locate(["/data/native", "/data/flatpak"], choice=1), ("linux", "/data/flatpak"))
         self.assertTrue(self.asked)
+        self.assertEqual(self.labels, ["linux  /data/native", "linux  /data/flatpak"])
 
     def test_no_root_exits(self) -> None:
         with self.assertRaises(SystemExit) as raised:
             self._locate([])
+        self.assertEqual(raised.exception.code, 1)
+
+    def test_unrecognized_root_exits(self) -> None:
+        with patch("app.accounts.locate_data", side_effect=AppError("无法识别数据根目录的平台: /data/qq")), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
+            locate_data_root("/data/qq")
         self.assertEqual(raised.exception.code, 1)
 
     def test_cancelled_or_unanswerable_choice_exits(self) -> None:
@@ -89,7 +98,7 @@ class ScanEscalationTests(unittest.TestCase):
         """返回 (read_keys 的结果, 各次调用 get_keys 时的 as_root)。"""
         calls = []
 
-        def fake_get_keys(user, qq, root_dir, *, platform, key_cache, as_root):
+        def fake_get_keys(user, qq, root_dir, *, key_cache, as_root):
             calls.append(as_root)
             return after_sudo if as_root and after_sudo is not None else first
 
@@ -154,7 +163,7 @@ class KeyCacheTests(unittest.TestCase):
         """返回 (read_keys 的结果, 各次传给 get_keys 的 key_cache, 向 stderr 的输出)。"""
         passed = []
 
-        def fake_get_keys(user, qq, root_dir, *, platform, key_cache, as_root):
+        def fake_get_keys(user, qq, root_dir, *, key_cache, as_root):
             passed.append(key_cache)
             return records
 
@@ -221,10 +230,11 @@ class AndroidAccessTests(unittest.TestCase):
     def _needs_sudo(self, user: str | None = None) -> bool:
         return prepare_access(str(self.root), user, platform="android", decrypting=False)
 
-    def _assert_exits(self, user: str | None = None) -> None:
-        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
+    def _assert_exits(self, user: str | None = None) -> str:
+        with redirect_stderr(io.StringIO()) as stderr, self.assertRaises(SystemExit) as raised:
             self._needs_sudo(user)
         self.assertEqual(raised.exception.code, 1)
+        return stderr.getvalue()
 
     def test_readable_qq_needs_no_sudo(self) -> None:
         self._create_qq("0")
@@ -264,10 +274,10 @@ class AndroidAccessTests(unittest.TestCase):
         self.users.touch()
         self._assert_exits()
 
-    def test_selected_user_without_qq_exits_even_if_another_user_has_it(self) -> None:
+    def test_selected_user_without_qq_exits_and_names_users_that_have_it(self) -> None:
         self._create_qq("0")
         (self.users / "10").mkdir()
-        self._assert_exits("10")
+        self.assertIn("有 QQ 私有目录的用户: 0，", self._assert_exits("10"))
 
     def test_unlistable_users_directory_needs_sudo(self) -> None:
         self._create_qq("0")

@@ -5,8 +5,10 @@
   android         按 uid 从文件头派生密钥 (KEY_SOURCES), 不需运行中的 QQ。
   windows, linux  从已登录 QQ 进程内存扫描 raw_key, 用 settings.db 验证; 须在运行该 QQ 的系统上进行。
                   -k 给出的密钥缓存优先于扫描, 同样经验证才采用, 可在任意系统上使用; 本脚本只读缓存。
-平台由 -P 指定; auto 时先按 -r 所指数据根目录下的结构识别, 识别不出再看运行系统。
---locate 只输出 {"platform": 判定的平台, "roots": 数据根目录候选}, 供调用方在取密钥前确定 -P 与 -r。
+平台按数据根目录下的结构识别: 有 data/user 为 android, 有 <uin>/nt_qq/nt_db 为 windows,
+有 nt_qq_<哈希>/nt_db 为 linux; -r 指定的目录识别不出时退出。未指定 -r 时依次查找本机全部
+默认位置, 结构识别不出的候选跳过。
+--locate 只输出数据根目录候选的 JSON 数组, 每项含 platform 与 root, 不取密钥。
 
 按 -u/-a 过滤账号标记, 格式无效的标记静默跳过; 每条账号记录以 platform 记下所属平台, keys 按匹配优先级排列,
 每项含 name、pattern、key、hmac_algorithm、key_note 与 files; files 列出归属该类别的
@@ -169,53 +171,51 @@ def read_keys_android(root: Path, user: str | None, qq: str | None, *, verbose: 
     return [{"platform": "android", **account, "keys": account_keys(account, verbose=verbose)} for account in scan_accounts(root, user, qq)]
 
 
-def _detect_platform(root_dir: str | None) -> str:
-    """auto 平台判定: root_dir 下的结构能识别时以它为准, 否则为运行系统对应的平台。
+def _detect_platform(root: Path) -> str:
+    """按 root 下的结构识别平台: 有 data/user 为 android, 有 <uin>/nt_qq/nt_db 为 windows, 有 nt_qq_<哈希>/nt_db 为 linux。
 
-    有 data/user 为 android, 有 <uin>/nt_qq/nt_db 为 windows, 有 nt_qq_<哈希>/nt_db 为 linux。
+    不存在或识别不出时抛 OSError。
     """
-    if root_dir is not None:
-        root = Path(root_dir).expanduser()
-        if (root / "data" / "user").is_dir():
-            return "android"
-        from cli.keyscan import locate
+    if not root.is_dir():
+        raise OSError(f"数据根目录不存在或不是目录: {root}")
+    if (root / "data" / "user").is_dir():
+        return "android"
+    from cli.keyscan import locate
 
-        layout = locate.detect_layout(root)
-        if layout is not None:
-            return layout
-    return _system_platform()
-
-
-def _system_platform() -> str:
-    """运行系统对应的平台: Windows 为 windows; 其余系统存在 /data/user 为 android, 否则为 linux。"""
-    if sys.platform == "win32":
-        return "windows"
-    return "android" if Path("/data/user").is_dir() else "linux"
+    layout = locate.detect_layout(root)
+    if layout is None:
+        raise OSError(f"无法识别数据根目录的平台: {root}；其下须有 data/user、<uin>/nt_qq/nt_db 或 nt_qq_<哈希>/nt_db")
+    return layout
 
 
-def data_roots(platform: str, root_dir: str | None, *, verbose: bool = False) -> list[Path]:
-    """platform 的数据根目录候选: 指定了 root_dir 时只有它; 否则 android 为 /, windows 与 linux 为本机默认位置上有数据的目录。
+def _data_roots(root_dir: str | None, *, verbose: bool = False) -> list[Path]:
+    """数据根目录候选: 指定了 root_dir 时只有它; 否则为本机全部默认位置上有数据的目录, 可能为空或不止一个。
 
-    默认位置为 Windows 的 UserDataInfo.ini 所指的 Tencent Files, Linux 的 ~/.config/QQ 与
-    flatpak 的 ~/.var/app/com.qq.QQ/config/QQ (sudo 下回退到调用者的家目录); 可能不止一个,
-    本机不是对应的系统时为空。
+    默认位置依次为 / (其下有 data/user 时)、Windows 的 UserDataInfo.ini 所指的 Tencent Files、
+    Linux 的 ~/.config/QQ 与 flatpak 的 ~/.var/app/com.qq.QQ/config/QQ (sudo 下回退到调用者的家目录)。
     """
     if root_dir is not None:
         return [Path(root_dir).expanduser().resolve()]
-    if platform == "android":
-        return [Path("/")]
     from cli.keyscan import locate
 
-    return [root.resolve() for root in locate.default_data_roots(platform, verbose=verbose)]
+    return [root.resolve() for root in locate.default_data_roots(verbose=verbose)]
 
 
-def _single_root(platform: str, roots: list[Path]) -> Path:
-    """roots 恰有一个时返回它; 没有或不止一个时以 OSError 要求用 -r 指定。"""
-    if not roots:
-        raise OSError(f"当前按 {platform} 平台处理，没有找到 QQ 数据根目录；请用 -r 指定，或用 -P 更换平台")
-    if len(roots) > 1:
-        raise OSError(f"当前按 {platform} 平台处理，找到多个 QQ 数据根目录，请用 -r 指定其中之一: {'、'.join(map(str, roots))}")
-    return roots[0]
+def locate_candidates(root_dir: str | None, *, verbose: bool = False) -> list[tuple[str, Path]]:
+    """数据根目录候选及其平台。指定 root_dir 时识别不出即抛 OSError; 默认位置的候选识别不出时跳过。
+
+    verbose 为真时向 stderr 说明跳过的候选。
+    """
+    candidates = []
+    for root in _data_roots(root_dir, verbose=verbose):
+        try:
+            candidates.append((_detect_platform(root), root))
+        except OSError:
+            if root_dir is not None:
+                raise
+            if verbose:
+                print(f"get_keys: 跳过默认位置 {root}，其下没有可识别的 QQ 数据布局", file=sys.stderr)
+    return candidates
 
 
 def read_keys_pc(root: Path, qq: str | None, *, layout: str, key_cache: str | None, verbose: bool = False) -> list[dict[str, object]]:
@@ -231,8 +231,13 @@ def read_keys_pc(root: Path, qq: str | None, *, layout: str, key_cache: str | No
 
     accounts = _windows_accounts(root, verbose=verbose) if layout == "windows" else _linux_accounts(root, verbose=verbose)
     cached = read_cached_keys(Path(key_cache).expanduser(), platform=layout) if key_cache is not None else {}
-    backend = _process_backend() if layout == _system_platform() else None
+    backend = _process_backend() if layout == _running_system() else None
     return pc.read_keys_pc(qq, accounts, layout=layout, cached=cached, backend=backend, verbose=verbose)
+
+
+def _running_system() -> str:
+    """运行本脚本的系统: Windows 为 windows, 其余为 linux。"""
+    return "windows" if sys.platform == "win32" else "linux"
 
 
 def _process_backend():
@@ -250,7 +255,7 @@ def _windows_accounts(root: Path, *, verbose: bool) -> list:
 
     accounts = locate.windows_accounts(root)
     if not accounts:
-        raise OSError(f"当前按 windows 平台处理，未在数据根目录找到账号: {root}；可用 -r 更换数据根目录，或用 -P 更换平台")
+        raise OSError(f"未在 windows 数据根目录找到账号: {root}")
     try:
         uid_by_uin = {entry.uin: entry.uid for entry in login_db.read_accounts(locate.windows_login_db(root), verbose=verbose)}
     except OSError as exc:
@@ -283,7 +288,7 @@ def _linux_accounts(root: Path, *, verbose: bool) -> list:
         for entry in entries:
             merged.setdefault(entry.uin, entry)
     if not read_any:
-        raise last_error or OSError(f"当前按 linux 平台处理，未在数据根目录找到 login.db: {root}；可用 -r 更换数据根目录，或用 -P 更换平台")
+        raise last_error or OSError(f"未在 linux 数据根目录找到 login.db: {root}")
 
     accounts = []
     for entry in merged.values():
@@ -301,31 +306,30 @@ def help_text() -> str:
   \033[1m{prog}\033[0m [选项]
 
 \033[1;4m选项:\033[0m
-  \033[1m-P, --platform <平台>\033[0m             数据所属的平台 \033[2m(默认: auto)\033[0m
   \033[1m-u, --user <ID>\033[0m                   Android 用户 ID \033[2m(仅 android)\033[0m
   \033[1m-a, --qq <uin/uid>\033[0m                QQ uin 或 uid 文本
-  \033[1m-r, --root-dir <目录>\033[0m             数据根目录 \033[2m(默认: 平台的默认位置)\033[0m
+  \033[1m-r, --root-dir <目录>\033[0m             数据根目录 \033[2m(默认: 本机全部默认位置中实际有数据的目录)\033[0m
   \033[1m-k, --key-cache <文件>\033[0m            密钥缓存，只读 \033[2m(默认: 不使用)\033[0m
-  \033[1m-l, --locate\033[0m                      只输出判定的平台与数据根目录候选，不取密钥
+  \033[1m-l, --locate\033[0m                      只输出数据根目录候选，不取密钥
   \033[1m-v, --verbose\033[0m                     显示详细调试信息
   \033[1m-h, --help\033[0m                        显示本帮助
 
 \033[1;4m平台:\033[0m
   数据来自哪个系统的 QQ，决定数据根目录下的结构与取密钥的方式，
-  与运行本脚本的系统无关。
-  \033[1mandroid\033[0m   按 uid 从文件头派生密钥，不需要运行中的 QQ
-  \033[1mwindows\033[0m   每账号单一 raw_key 解全部库; 先取 -k 密钥缓存中通过验证的密钥，
-            没有时从已登录 QQ 进程内存扫描，扫描须在运行该 QQ 的系统上进行
-  \033[1mlinux\033[0m     同 windows; 扫描通常需 root
-  \033[1mauto\033[0m      指定了 -r 时按其下的结构识别; 识别不出或未指定时看运行系统:
-            Windows 为 windows，存在 /data/user 为 android，其余为 linux
+  与运行本脚本的系统无关，按数据根目录下的结构识别:
+  \033[1mandroid\033[0m   有 data/user; 按 uid 从文件头派生密钥，不需要运行中的 QQ
+  \033[1mwindows\033[0m   有 <uin>/nt_qq/nt_db; 每账号单一 raw_key 解全部库，
+            先取 -k 密钥缓存中通过验证的密钥，没有时从已登录 QQ 进程内存扫描，
+            扫描须在运行该 QQ 的系统上进行
+  \033[1mlinux\033[0m     有 nt_qq_<哈希>/nt_db; 取密钥同 windows，扫描通常需 root
 
 \033[1;4m数据根目录:\033[0m
-  \033[1mandroid\033[0m   默认为 /，其下为 data/user/<ID>/com.tencent.mobileqq
-  \033[1mwindows\033[0m   默认为 QQ 配置所指的 Tencent Files，其下为 <uin>/nt_qq/nt_db
-  \033[1mlinux\033[0m     默认为 ~/.config/QQ 或 flatpak 的 ~/.var/app/com.qq.QQ/config/QQ，
+  未指定 -r 时依次查找本机全部默认位置，与运行本脚本的系统无关:
+  \033[1mandroid\033[0m   / (其下有 data/user 时)，其下为 data/user/<ID>/com.tencent.mobileqq
+  \033[1mwindows\033[0m   QQ 配置所指的 Tencent Files，其下为 <uin>/nt_qq/nt_db
+  \033[1mlinux\033[0m     ~/.config/QQ 或 flatpak 的 ~/.var/app/com.qq.QQ/config/QQ，
             其下为 nt_qq_<哈希>/nt_db
-  默认位置只在对应的系统上提供; 没有或不止一个时须用 -r 指定。
+  找到多个时须用 -r 指定其中之一; 数据在其他位置时也用 -r 指定。
 
 \033[1;4m密钥缓存:\033[0m
   此前取得的密钥，格式即本脚本输出的 JSON 数组，可以只保留部分字段:
@@ -343,11 +347,11 @@ def help_text() -> str:
   没有归属文件的类别不列出，有归属文件但无法取得密钥时 key 为 null。
 
 \033[1;4m示例:\033[0m
-  读取全部账号的密钥 (自动判定平台)
+  读取全部账号的密钥 (数据根目录取本机默认位置)
   {prog}
 
   只读取 Android 用户 0 下指定账号的密钥
-  {prog} -P android -u 0 -a <uin>
+  {prog} -u 0 -a <uin>
 
   从其他 Android 数据根目录读取，其下须有 data/user/<ID>/com.tencent.mobileqq
   {prog} -r <目录>
@@ -375,19 +379,21 @@ def main() -> None:
     parser.add_argument("-u", "--user")
     parser.add_argument("-a", "--qq")
     parser.add_argument("-r", "--root-dir")
-    parser.add_argument("-P", "--platform", choices=("auto", "android", "windows", "linux"), default="auto")
     parser.add_argument("-k", "--key-cache")
     parser.add_argument("-l", "--locate", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
-    platform = _detect_platform(args.root_dir) if args.platform == "auto" else args.platform
-    roots = data_roots(platform, args.root_dir, verbose=args.verbose)
+    roots = locate_candidates(args.root_dir, verbose=args.verbose)
     if args.locate:
-        print(json.dumps({"platform": platform, "roots": [str(root) for root in roots]}, ensure_ascii=False, indent=2))
+        print(json.dumps([{"platform": platform, "root": str(root)} for platform, root in roots], ensure_ascii=False, indent=2))
         return
 
-    root = _single_root(platform, roots)
+    if not roots:
+        raise OSError("没有找到 QQ 数据根目录；请用 -r 指定")
+    if len(roots) > 1:
+        raise OSError(f"找到多个 QQ 数据根目录，请用 -r 指定其中之一: {'、'.join(str(root) for _, root in roots)}")
+    platform, root = roots[0]
     if platform == "android":
         records = read_keys_android(root, args.user, args.qq, verbose=args.verbose)
     else:

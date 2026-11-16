@@ -62,7 +62,7 @@ def complete_database_dir(args: argparse.Namespace, *, attr: str, databases: Seq
 
 
 def _decrypt_to_temp(args: argparse.Namespace, names: list[str]) -> Path:
-    args.platform, args.root_dir = locate_data_root(args.platform, args.root_dir)
+    args.platform, args.root_dir = locate_data_root(args.root_dir)
     as_root = prepare_access(args.root_dir, args.user, platform=args.platform, decrypting=True)
 
     # POSIX 下临时数据库优先放在 tmpfs，创建失败时退回系统临时目录；Windows 的 /tmp 会落到当前盘根目录，直接用系统临时目录

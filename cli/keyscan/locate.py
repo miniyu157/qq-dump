@@ -11,8 +11,7 @@
 布局只取决于数据来自哪个系统的 QQ, 与运行本程序的系统无关。调用方按数据布局选择: Windows
 布局用 windows_accounts 与 windows_login_db; Linux 布局用 linux_login_db_candidates 读账号,
 再用 account_db_dir (配合读到的 uid) 定位。detect_layout 按账号目录的形态识别布局;
-default_data_roots 列出某种布局在本机默认位置上的数据根目录, 没有或不止一个时由调用方要求
-显式指定 -r。
+default_data_roots 列出本机全部默认位置上的数据根目录, 数据不在其中时由调用方要求显式指定 -r。
 """
 
 import hashlib
@@ -56,17 +55,21 @@ def detect_layout(root: Path) -> str | None:
     return None
 
 
-def default_data_roots(layout: str, *, verbose: bool = False) -> list[Path]:
-    """返回 layout 布局 (windows / linux) 在本机默认位置上的 QQ 数据根目录。
+def default_data_roots(*, verbose: bool = False) -> list[Path]:
+    """列出本机全部默认位置上的 QQ 数据根目录, 与运行系统无关, 可能为空或不止一个。
 
-    本机不是对应的系统, 或默认位置上没有数据时返回空列表。Windows 至多一个; Linux 的原生安装与
-    flatpak 安装都有数据时返回两个。
+    依次为 / (其下有 data/user 时)、Windows 的 UserDataInfo.ini 所指的 Tencent Files、
+    Linux 的 ~/.config/QQ 与 flatpak 的 ~/.var/app/com.qq.QQ/config/QQ。
     Linux 下 sudo 运行须回退到其他家目录时, 仅 verbose 为真才向 stderr 提示已跨入该目录。
     """
-    if layout == "windows":
-        root = _windows_data_root() if sys.platform == "win32" else None
-        return [root] if root is not None else []
-    return _linux_data_roots(verbose=verbose) if sys.platform != "win32" else []
+    roots = [root for root in (_android_data_root(), _windows_data_root()) if root is not None]
+    return roots + _linux_data_roots(verbose=verbose)
+
+
+def _android_data_root() -> Path | None:
+    """Android 的数据根目录 /, 其下没有 data/user 时返回 None。"""
+    root = Path("/")
+    return root if (root / "data" / "user").is_dir() else None
 
 
 def _windows_data_root() -> Path | None:
