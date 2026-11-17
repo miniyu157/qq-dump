@@ -17,6 +17,7 @@ from tempfile import TemporaryDirectory
 
 from support import REPO, roots
 from support.cli import Result, child_env, run, run_main
+from support.group import BULLETINS, CANCELLED_ESSENCE, DETAILS, ESSENCES, LEFT_MEMBER, MEMBERS, NOTICES, write_group
 from support.profile import FRIENDS, OWNER, OWNER_UID, write_profile
 from support.requires import needs_sqlcipher
 
@@ -81,6 +82,47 @@ class InformationTests(_MainCase):
             self.skipTest("需要 git 与仓库历史")
         result = run_main("-V")
         self.assertEqual((result.code, result.out), (0, f"{describe.stdout.strip()} ({date.stdout.strip()})\n"))
+
+
+class GroupQueryTests(_MainCase):
+    """groups 子命令: 群资料库经 -g 或环境变量提供，输出手写的期望记录。"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls.group = cls.base / "group_info.db"
+        write_group(cls.group)
+
+    def test_each_what_prints_its_records(self) -> None:
+        expected = {"detail": DETAILS, "member": MEMBERS, "bulletin": BULLETINS, "essence": ESSENCES, "notice": NOTICES}
+        for what, records in expected.items():
+            with self.subTest(what=what):
+                result = self.main("-g", self.group, "groups", what)
+                self.assertEqual(result.code, 0, result.err)
+                self.assertEqual(result.json(), records)
+
+    def test_left_members_and_cancelled_essences_are_opt_in(self) -> None:
+        members = self.main("-g", self.group, "groups", "member", "-e")
+        self.assertIn(LEFT_MEMBER, members.json())
+        essences = self.main("-g", self.group, "groups", "essence", "-c")
+        self.assertIn(CANCELLED_ESSENCE, essences.json())
+
+    def test_database_can_come_from_the_environment(self) -> None:
+        # 不带 -E，否则环境变量与仓库 .env 会被忽略
+        env = child_env(QQDUMP_GROUP_INFO_DB=str(self.group), QQDUMP_KEY_CACHE=str(self.cache))
+        result = run([sys.executable, str(REPO / "main.py"), "groups", "detail"], env=env)
+        self.assertEqual(result.code, 0, result.err)
+        self.assertEqual(result.json(), DETAILS)
+
+    def test_unknown_what_is_an_argument_error(self) -> None:
+        result = self.main("-g", self.group, "groups", "absent")
+        self.assertEqual((result.code, result.out), (2, ""))
+
+    def test_unreadable_database_is_reported_with_exit_code_1(self) -> None:
+        result = self.main("-g", self.base / "absent.db", "groups", "detail")
+        self.assertEqual((result.code, result.out), (1, ""))
+        self.assertIn("absent.db", result.err)
+        self.assertNotIn("Traceback", result.err)
 
 
 class ProfileQueryTests(_MainCase):

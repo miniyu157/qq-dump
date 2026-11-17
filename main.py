@@ -106,6 +106,27 @@ def cmd_friends(args: argparse.Namespace) -> None:
     render_json(friend._asdict() for friend in load_friends(args.profile_db))
 
 
+def cmd_groups(args: argparse.Namespace) -> None:
+    """输出群资料 JSON；按 what 输出详情、成员、公告、精华或群通知。"""
+    from app.databases import complete_databases, print_database_hint
+    from app.output import render_json
+
+    databases = [("group_info_db", "group_info.db")]
+    print_database_hint(args, databases)
+    complete_databases(args, databases)
+
+    from api import load_bulletins, load_details, load_essences, load_members, load_notices
+
+    loads = {
+        "detail": lambda: load_details(args.group_info_db),
+        "member": lambda: load_members(args.group_info_db, include_left=args.include_left),
+        "bulletin": lambda: load_bulletins(args.group_info_db),
+        "essence": lambda: load_essences(args.group_info_db, include_cancelled=args.include_cancelled),
+        "notice": lambda: load_notices(args.group_info_db),
+    }
+    render_json(record._asdict() for record in loads[args.what]())
+
+
 def cmd_owner(args: argparse.Namespace) -> None:
     """输出主人信息。"""
     from app.databases import complete_databases, print_database_hint
@@ -241,6 +262,7 @@ def help_text() -> str:
 {_title}选项 (文件):{out.RESET}
   {out.BOLD}-p, --profile-db <路径>{out.RESET}               profile_info.db 路径
   {out.BOLD}-n, --nt-msg-db <路径>{out.RESET}                nt_msg.db 路径
+  {out.BOLD}-g, --group-info-db <路径>{out.RESET}            group_info.db 路径
   {out.BOLD}-o, --output-dir <目录=.>{out.RESET}             输出目录 {out.FAINT}(默认: 当前目录){out.RESET}
 
 {_title}子命令 (解密):{out.RESET}
@@ -255,6 +277,9 @@ def help_text() -> str:
   {out.HL}web{out.RESET} {out.FAINT}[-p]{out.RESET}                              启动本地 WebUI
   {out.HL}friends{out.RESET} {out.FAINT}[-p]{out.RESET}                          输出好友 JSON
   {out.HL}owner{out.RESET} {out.FAINT}[-p]{out.RESET}                            输出主人信息
+  {out.HL}groups{out.RESET} {out.FAINT}[-g]{out.RESET} <detail|member|bulletin|essence|notice>  输出群资料
+    {out.BOLD}-e, --include-left{out.RESET}                   member 包含已退群的成员
+    {out.BOLD}-c, --include-cancelled{out.RESET}              essence 包含已取消精华的消息
   {out.HL}l, legacy{out.RESET} {out.FAINT}[-o] [-n] [-p]{out.RESET}              启动 legacy 菜单
     {out.BOLD}--blackboxprotobuf{out.RESET}                  使用旧 protobuf 解析器
   {out.HL}t28, Tealina28-QQNT_Export{out.RESET} {out.FAINT}[-o]{out.RESET}       Tealina28/QQNT_Export 消息导出
@@ -349,6 +374,7 @@ def main() -> None:
     common.add_argument("-k", "--key-cache", dest="key_cache", default=argparse.SUPPRESS)
     common.add_argument("-p", "--profile-db", dest="profile_db", default=argparse.SUPPRESS)
     common.add_argument("-n", "--nt-msg-db", dest="nt_msg_db", default=argparse.SUPPRESS)
+    common.add_argument("-g", "--group-info-db", dest="group_info_db", default=argparse.SUPPRESS)
     common.add_argument("-s", "--sudo-notice", dest="sudo_notice", action=argparse.BooleanOptionalAction, default=argparse.SUPPRESS)
     common.add_argument("-o", "--output-dir", dest="output_dir", default=argparse.SUPPRESS)
     common.add_argument("-v", "--verbose", dest="verbose", action=argparse.BooleanOptionalAction, default=argparse.SUPPRESS)
@@ -371,6 +397,12 @@ def main() -> None:
     sub.add_parser("web", parents=[common]).set_defaults(func=cmd_web)
     sub.add_parser("friends", parents=[common]).set_defaults(func=cmd_friends)
     sub.add_parser("owner", parents=[common]).set_defaults(func=cmd_owner)
+
+    groups_parser = sub.add_parser("groups", parents=[common])
+    groups_parser.add_argument("what", choices=("detail", "member", "bulletin", "essence", "notice"))
+    groups_parser.add_argument("-e", "--include-left", action="store_true")
+    groups_parser.add_argument("-c", "--include-cancelled", action="store_true")
+    groups_parser.set_defaults(func=cmd_groups)
 
     avatar_parser = sub.add_parser("avatar", parents=[common])
     avatar_parser.add_argument("uin", metavar="<uin>")
