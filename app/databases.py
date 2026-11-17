@@ -18,6 +18,7 @@ __all__ = ["complete_database_dir", "complete_databases", "print_database_hint"]
 _DATABASE_HINTS = {
     "profile_db": ("--profile-db", "QQDUMP_PROFILE_DB"),
     "nt_msg_db": ("--nt-msg-db", "QQDUMP_NT_MSG_DB"),
+    "group_info_db": ("--group-info-db", "QQDUMP_GROUP_INFO_DB"),
 }
 
 

@@ -18,6 +18,7 @@ _PATH_ENV = {
     "key_cache": "QQDUMP_KEY_CACHE",
     "profile_db": "QQDUMP_PROFILE_DB",
     "nt_msg_db": "QQDUMP_NT_MSG_DB",
+    "group_info_db": "QQDUMP_GROUP_INFO_DB",
 }
 
 _FLAG_ENV = {
